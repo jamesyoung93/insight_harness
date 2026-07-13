@@ -1,0 +1,84 @@
+{
+  "data_version": "b5b6a4f4f77a",
+  "months": [
+    "2024-07",
+    "2024-08",
+    "2024-09",
+    "2024-10",
+    "2024-11",
+    "2024-12",
+    "2025-01",
+    "2025-02",
+    "2025-03",
+    "2025-04",
+    "2025-05",
+    "2025-06",
+    "2025-07",
+    "2025-08",
+    "2025-09",
+    "2025-10",
+    "2025-11",
+    "2025-12",
+    "2026-01",
+    "2026-02",
+    "2026-03",
+    "2026-04",
+    "2026-05",
+    "2026-06"
+  ],
+  "events": {
+    "east_program": {
+      "start": "2025-10",
+      "scope": {
+        "region": "East"
+      },
+      "true_effect_pct": 0.08,
+      "metrics": [
+        "revenue",
+        "units"
+      ],
+      "mechanism": "multiplicative lift on all East cells"
+    },
+    "west_shock": {
+      "start": "2026-04",
+      "scope": {
+        "region": "West",
+        "segment": "Enterprise"
+      },
+      "true_effect_pct": -0.22,
+      "metrics": [
+        "revenue"
+      ],
+      "mechanism": "multiplicative shock on West/Enterprise cells"
+    }
+  },
+  "source_b_issues": {
+    "bias_by_region": {
+      "North": 1.025,
+      "South": 1.035,
+      "East": 1.03,
+      "West": 1.032
+    },
+    "lag_months": 1,
+    "restated_months": [
+      "2024-07",
+      "2024-08",
+      "2024-09"
+    ],
+    "restatement_factor": 1.015
+  },
+  "variant_definitions": {
+    "revenue": {
+      "net": "gross * (1 - segment discount)",
+      "discounts": {
+        "Enterprise": 0.18,
+        "MidMarket": 0.12,
+        "SMB": 0.07
+      }
+    },
+    "new_customers": {
+      "strict": "first purchase ever",
+      "broad": "strict + reactivated lapsed accounts"
+    }
+  }
+}

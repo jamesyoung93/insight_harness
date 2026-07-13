@@ -1,0 +1,54 @@
+"""Causal Studio: a review surface. Question → design → computed assumption
+checks → estimate with naive comparison → sensitivity → analyst sign-off."""
+from __future__ import annotations
+
+import logging
+
+import streamlit as st
+
+from harness import pipeline, triage
+from harness import semantic_layer as sl
+from harness.engines.causal_advisor import DESIGN_METRICS
+from views import common
+
+
+def render() -> None:
+    st.title("Causal Studio")
+    st.caption("Attribution is a designed analysis, not a narrative. The studio matches your "
+               "question to a registered event, proposes a study design, computes the assumption "
+               "checks, and holds the result at Hypothesis until an analyst signs off.")
+
+    # widget-keyed state is dropped when another page renders; restore the
+    # selection so the studio keeps its context across navigation
+    if "studio_event" not in st.session_state and "_studio_event_last" in st.session_state:
+        st.session_state["studio_event"] = st.session_state["_studio_event_last"]
+    eid = st.selectbox("Registered event", list(sl.EVENTS), key="studio_event",
+                       format_func=lambda k: sl.EVENTS[k]["name"])
+    st.session_state["_studio_event_last"] = eid
+    with st.expander("Event registry"):
+        for ev in sl.EVENTS.values():
+            st.markdown(f"- **{ev['name']}** — from {ev['start']}, scope "
+                        f"{', '.join(f'{k}={v}' for k, v in ev['scope'].items())}, "
+                        f"metrics: {', '.join(ev['metrics'])}. {ev['notes']}")
+
+    autorun = st.session_state.pop("studio_autorun", False)
+    metric = st.session_state.pop("studio_metric", None)
+    if st.button("Propose a design", type="primary") or autorun:
+        ev = sl.EVENTS[eid]
+        metric = metric if metric in DESIGN_METRICS else "revenue"
+        question = f"What was the impact of {ev['name']} on {sl.METRICS[metric]['label'].lower()}?"
+        intent = triage.Intent(question, triage.CAUSAL, metric, {}, event_id=eid)
+        try:
+            with st.spinner("Computing the design and its checks…"):
+                st.session_state["studio_art"] = pipeline.answer_intent(intent)
+        except Exception:
+            logging.getLogger(__name__).exception("design proposal failed: %s", eid)
+            st.error("This design couldn't be computed, so nothing is shown rather than "
+                     "an unchecked estimate. Pick another event, or check the data feed.")
+
+    art = st.session_state.get("studio_art")
+    if art is not None and art.extras["intent"].event_id == eid:
+        common.render_answer(art, key="studio")
+    else:
+        st.info("Pick a registered event and propose a design — the studio computes the "
+                "assumption checks, the estimate, and its sensitivity.")
