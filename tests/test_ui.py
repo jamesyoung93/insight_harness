@@ -54,6 +54,33 @@ def test_page_renders(page):
     assert not at.exception, f"{page} raised: {at.exception}"
 
 
+def test_no_key_makes_llm_requirement_visible():
+    at = app().run()
+    text = rendered_text(at)
+    assert any("Language-model translation is off" in w.value for w in at.warning)
+    assert "No API credential is bundled" in text
+    assert any("required for LLM translation" in t.label for t in at.text_input)
+
+
+def test_session_key_updates_llm_status_without_exposing_key():
+    at = app().run()
+    key_input = next(t for t in at.text_input if "required for LLM translation" in t.label)
+    key_input.set_value("sk-ant-test-placeholder").run()
+    text = rendered_text(at)
+    assert "Language-model translation is enabled" in text
+    assert "credential entered for this app session" in text
+    assert "sk-ant-test-placeholder" not in text
+
+
+def test_deployment_key_reports_credential_source(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-placeholder")
+    at = app().run()
+    text = rendered_text(at)
+    assert "Language-model translation is enabled" in text
+    assert "configured by the deployment owner" in text
+    assert "sk-ant-test-placeholder" not in text
+
+
 @pytest.mark.parametrize("q,expect", [
     ("What is revenue in the West region?", "Net revenue"),
     ("Trend calls by month in the North region", "Sales calls"),

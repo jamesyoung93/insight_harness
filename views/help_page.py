@@ -17,6 +17,11 @@ improvises a definition, and no answer is generated from a model's memory — a
 language model, when enabled, only translates your wording into the governed
 query, and its translation is checked before anything runs.
 
+No model credentials are bundled with the app. Without an Anthropic API key,
+questions use the bounded built-in parser. Add your own key in the sidebar, or
+configure `ANTHROPIC_API_KEY` in a deployment you control, to enable flexible
+model-backed translation.
+
 Questions can carry an explicit time window ("revenue in Q1 2026", "trend
 calls last 6 months") and a comparison basis ("vs prior month", "vs same month
 last year"); both are validated against the available data and disclosed in
