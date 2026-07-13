@@ -37,16 +37,34 @@ PAGES = {
 page = st.sidebar.radio("Insight Harness", list(PAGES), key="nav")
 st.sidebar.caption(f"data version `{sl.data_version()}`")
 
-with st.sidebar.expander("Language-model translation"):
-    st.caption("Add an Anthropic API key to translate questions with a language model. "
-               "The model only translates your question into a governed query — it never "
-               "computes or answers. Every translation is checked against the metric "
-               "registry, and anything invalid falls back to the built-in parser. The key "
-               "stays in session memory only; you can also set the ANTHROPIC_API_KEY "
-               "environment variable.")
-    st.text_input("Anthropic API key", type="password", key="api_key")
+session_key = st.session_state.get("api_key")
+deployment_key = os.environ.get("ANTHROPIC_API_KEY")
+credential_source = "session" if session_key else "deployment" if deployment_key else None
+
+if credential_source:
+    st.sidebar.success("Language-model translation is enabled.")
+    if credential_source == "session":
+        st.sidebar.caption("Using the Anthropic API credential entered for this app session.")
+    else:
+        st.sidebar.caption("Using an Anthropic API credential configured by the deployment owner.")
+else:
+    st.sidebar.warning("Language-model translation is off.")
+    st.sidebar.caption("No API credential is bundled with this app. Questions currently use "
+                       "the bounded built-in parser. Add your own Anthropic API key below to "
+                       "enable flexible model-backed translation.")
+
+with st.sidebar.expander("Enable language-model translation (API key required)",
+                         expanded=not credential_source):
+    st.caption("A valid Anthropic API credential is required. The model only translates your "
+               "question into a governed query; it never computes or writes the answer. Every "
+               "translation is checked against the metric registry, and anything invalid "
+               "falls back to the built-in parser.")
+    st.text_input("Your Anthropic API key (required for LLM translation)", type="password",
+                  key="api_key", help="Only enter a key in a deployment you trust.")
     st.text_input("Model", value="claude-sonnet-4-6", key="llm_model")
-    active = bool(st.session_state.get("api_key") or os.environ.get("ANTHROPIC_API_KEY"))
-    st.markdown(f"Translator: **{'language model (registry-validated)' if active else 'built-in parser'}**")
+    st.caption("A key entered here remains in the current Streamlit session and is not written "
+               "to disk by the app. It is sent to Anthropic when you ask a question. In a "
+               "deployment you control, you can instead set `ANTHROPIC_API_KEY` in Streamlit "
+               "secrets.")
 
 PAGES[page]()

@@ -6,6 +6,14 @@ deterministic engines → computed divergence & caveats → provenance-stamped
 answer artifacts, with a standing accuracy record where abstention and
 reproducibility are scored behaviors.
 
+> [!IMPORTANT]
+> **Bring your own model credentials.** No API key is included or proxied. The
+> app works without one, but only through its bounded built-in parser. To enable
+> flexible language-model translation, enter your own Anthropic API key in the
+> sidebar or configure `ANTHROPIC_API_KEY` in a deployment you control. The model
+> translates intent only; governed deterministic engines still compute every
+> answer.
+
 ## Run
 
 ```bash
@@ -14,6 +22,21 @@ python data/generate_demo_data.py   # regenerates the dataset
 streamlit run app.py
 pytest                              # headless UI + harness suite
 ```
+
+### Enable language-model translation (optional)
+
+Starting the app does not give it model access. To enable model-backed question
+translation, either:
+
+- enter your Anthropic API key in the app's sidebar for the current Streamlit
+  session; or
+- copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` and add
+  your key. The real secrets file is ignored by Git.
+
+Without a key, the analytical pages still work, but questions are interpreted
+by the narrower built-in parser. The model-backed feature is translation and
+orchestration, not answer generation. Only enter a key in a deployment you
+trust.
 
 ## Deploy on Streamlit Community Cloud
 
@@ -25,13 +48,16 @@ application.
 1. Connect the GitHub repository to [Streamlit Community Cloud](https://share.streamlit.io/).
 2. Create an app using branch `main` and entrypoint `app.py`.
 3. Use Python 3.12 in Advanced settings.
-4. Deploy without a model key to use the deterministic parser. To enable the
-   optional language-model translator, add this root-level secret in Advanced
-   settings rather than committing it:
+4. Model-backed translation is disabled until the deployment is given an API
+   credential. To enable it, add your own root-level secret in Advanced settings
+   rather than committing it:
 
    ```toml
    ANTHROPIC_API_KEY = "your-key"
    ```
+
+   If you omit the secret, the deployed app remains usable in bounded
+   built-in-parser mode.
 
 Root-level Streamlit secrets are available as environment variables, which is
 the interface used by this app. See Streamlit's official guides to
