@@ -1,5 +1,6 @@
 {
-  "data_version": "402e1d3fab17",
+  "data_version": "5f2342d7f66b",
+  "seed": 42,
   "months": [
     "2024-07",
     "2024-08",
@@ -26,11 +27,37 @@
     "2026-05",
     "2026-06"
   ],
+  "grain": {
+    "source_a": [
+      "account_id",
+      "month"
+    ],
+    "source_b": [
+      "month",
+      "territory",
+      "district",
+      "region",
+      "specialty",
+      "payer_channel"
+    ],
+    "accounts": [
+      "account_id"
+    ]
+  },
   "events": {
     "speaker_launch": {
       "start": "2025-10",
       "scope": {
-        "region": "East"
+        "territory": [
+          "E-CAR-01",
+          "E-END-01"
+        ]
+      },
+      "control_scope": {
+        "territory": [
+          "N-CAR-01",
+          "N-END-01"
+        ]
       },
       "true_effect_pct": 0.08,
       "metrics": [
@@ -38,24 +65,40 @@
         "nrx",
         "nbrx"
       ],
-      "mechanism": "multiplicative regional prescription lift"
+      "treatment_flag": "speaker_launch_active"
     },
     "formulary_win": {
       "start": "2026-01",
       "scope": {
-        "region": "South"
+        "region": "South",
+        "payer_channel": "Medicare Part D"
+      },
+      "control_scope": {
+        "region": [
+          "North",
+          "East"
+        ],
+        "payer_channel": "Medicare Part D"
       },
       "true_effect_pct": 0.1,
       "metrics": [
         "trx",
         "nrx"
       ],
-      "mechanism": "lift on South partner/payer-channel volume"
+      "treatment_flag": "formulary_win_active"
     },
     "competitor_launch": {
       "start": "2026-04",
       "scope": {
         "region": "West",
+        "specialty": "Cardiology"
+      },
+      "control_scope": {
+        "region": [
+          "North",
+          "South",
+          "East"
+        ],
         "specialty": "Cardiology"
       },
       "true_effect_pct": -0.22,
@@ -64,31 +107,7 @@
         "nrx",
         "nbrx"
       ],
-      "mechanism": "multiplicative West/Cardiology shock"
-    },
-    "east_program": {
-      "start": "2025-10",
-      "scope": {
-        "region": "East"
-      },
-      "true_effect_pct": 0.08,
-      "metrics": [
-        "revenue",
-        "units"
-      ],
-      "mechanism": "multiplicative lift on all East cells"
-    },
-    "west_shock": {
-      "start": "2026-04",
-      "scope": {
-        "region": "West",
-        "segment": "Enterprise"
-      },
-      "true_effect_pct": -0.22,
-      "metrics": [
-        "revenue"
-      ],
-      "mechanism": "multiplicative shock on West/Enterprise cells"
+      "treatment_flag": "competitor_launch_active"
     }
   },
   "source_b_issues": {
@@ -104,29 +123,35 @@
       "2024-08",
       "2024-09"
     ],
-    "restatement_factor": 1.015
+    "restatement_factor": 1.015,
+    "affected_columns": [
+      "trx_units",
+      "trx_dollars",
+      "trx_normalized",
+      "nrx",
+      "nbrx",
+      "market_trx"
+    ]
   },
   "variant_definitions": {
-    "revenue": {
-      "net": "gross * (1 - segment discount)",
-      "discounts": {
-        "Enterprise": 0.18,
-        "MidMarket": 0.12,
-        "SMB": 0.07
-      }
-    },
     "trx": {
       "units": "total prescriptions",
       "dollars": "gross prescription value",
-      "normalized": "pack-size normalized equivalent units"
+      "normalized": "payer-channel normalized equivalent units"
     },
     "trx_share": {
       "numerator": "brand TRx units",
-      "denominator": "market TRx units"
+      "denominator": "total market TRx units"
     },
-    "new_customers": {
-      "strict": "first purchase ever",
-      "broad": "strict + reactivated lapsed accounts"
+    "call_attainment": {
+      "numerator": "details delivered",
+      "denominator": "call plan"
     }
-  }
+  },
+  "invariants": [
+    "nbrx <= nrx <= trx_units",
+    "market_trx >= trx_units",
+    "one source_a row per account_id/month",
+    "accounts are derived from source_a"
+  ]
 }

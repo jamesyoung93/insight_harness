@@ -12,14 +12,7 @@ from views import common
 
 
 def _display_value(art, value: float | None) -> str:
-    if value is None:
-        return "—"
-    metric = sl.METRICS[art.resolution.metric]
-    if metric.get("kind") == "ratio":
-        return f"{float(value):.1%}"
-    if art.resolution.variant == "dollars" or art.resolution.metric == "revenue":
-        return "$" + f"{float(value):,.1f}"
-    return f"{float(value):,.1f}"
+    return common.format_artifact_value(art, value)
 
 
 def _remove_saved(store: saved_insights.InMemorySavedInsightStore,
@@ -30,7 +23,7 @@ def _remove_saved(store: saved_insights.InMemorySavedInsightStore,
 def _watched_section() -> None:
     st.subheader("Watched")
     store = common.saved_insight_store()
-    watched = store.all()
+    watched = tuple(insight for insight in store.all() if insight.watched)
     if not watched:
         st.caption("Nothing watched yet. Pin a metric with the 👁 Watch action under "
                    "any measured answer.")
@@ -51,14 +44,20 @@ def _watched_section() -> None:
                 variant = sl.METRICS[art.resolution.metric]["variants"][
                     art.resolution.variant]["label"]
                 c1.caption(f"{source} · {variant}")
-                latest = _display_value(art, art.value)
-                if comparison.get("available"):
+                if insight.question_class == "Retrieval":
+                    count = len(art.table) if art.table is not None else 0
+                    c2.caption(f"{count:,} matching accounts · saved retrieval")
+                elif insight.question_class == "Diagnostic":
+                    c2.caption(art.headline)
+                elif comparison.get("available"):
+                    latest = _display_value(art, art.value)
                     reference = _display_value(art, comparison.get("reference_value"))
-                    pct = comparison.get("delta_pct")
-                    delta = f" · {float(pct):+.1%}" if pct is not None else ""
+                    formatted_delta = common.format_comparison_delta(art, comparison)
+                    delta = f" · {formatted_delta}" if formatted_delta else ""
                     c2.caption(f"{latest} latest vs {reference} "
                                f"{comparison['basis_label']}{delta}")
                 else:
+                    latest = _display_value(art, art.value)
                     c2.caption(f"{latest} latest · comparison history unavailable")
                 material = sum(1 for fork in art.divergence if fork.get("material"))
                 c3.caption(f"⚠ {material} fork(s)" if material else art.tier.lower())
@@ -69,14 +68,17 @@ def _watched_section() -> None:
                     tiles.WINDOW_CONTROLS[insight.spec.window],
                     tiles.BASIS_CONTROLS[insight.spec.basis],
                 )
-                c4.button("Break this down", key=f"watch_{i}",
-                          on_click=common.queue_question, args=(question,))
+                c4.button(
+                    f"Break down {insight.label}", key=f"watch_{insight.id}",
+                    on_click=common.queue_question_with_resolution,
+                    args=(question, insight.source, insight.variant),
+                    kwargs={"basis": tiles.BASIS_CONTROLS[insight.spec.basis]})
             except Exception:
                 logging.getLogger(__name__).exception(
                     "saved insight evaluation failed: %s", insight.id)
                 c2.caption("This saved insight could not be evaluated.")
                 c3.caption("—")
-        c5.button("Remove", key=f"unwatch_{i}", on_click=_remove_saved,
+        c5.button(f"Remove {insight.label}", key=f"unwatch_{insight.id}", on_click=_remove_saved,
                   args=(store, insight.id))
 
 
@@ -105,16 +107,44 @@ def render() -> None:
                 "smaller movements.")
         return
 
-    st.caption("Each row is a movement the system surfaced on its own. "
-               "Break it down to see where it sits.")
+    st.caption("Each row is a movement the system surfaced on its own. Priority is a "
+               "unitless 0–100 ranking that combines standardized and relative movement; "
+               "native movement remains visible beside it.")
     for row in feed.itertuples():
         c1, c2, c3, c4 = st.columns([2.4, 2.4, 1.4, 1.8])
         c1.markdown(f"**{row.metric}** · {row.scope}")
-        c2.caption(f"{row.latest:,.1f} latest vs {row.trailing_mean:,.1f} trailing · z={row.z}")
-        c3.caption(f"impact {row.impact:,.1f}")
+        variant = sl.default_variant(row.metric_id)
+        latest = common.format_metric_value(row.metric_id, variant, row.latest)
+        trailing = common.format_metric_value(row.metric_id, variant, row.trailing_mean)
+        c2.caption(f"{latest} latest vs {trailing} trailing · z={row.z}")
+        movement = common.format_native_delta(row.metric_id, variant, row.native_delta)
+        c3.caption(f"priority {row.impact_score * 100:.0f}/100 · {movement}")
         c4.button("Break this down", key=f"mon_{row.Index}",
                   on_click=common.queue_question,
                   args=(services.breakdown_question(row.metric_id, {row.dim: row.value}),))
     with st.expander("All flagged movements, as a table"):
-        st.dataframe(feed.drop(columns=["metric_id", "dim", "value"]),
-                     width="stretch", hide_index=True)
+        display = feed.assign(
+            latest_display=[
+                common.format_metric_value(row.metric_id, sl.default_variant(row.metric_id),
+                                           row.latest)
+                for row in feed.itertuples()
+            ],
+            trailing_display=[
+                common.format_metric_value(row.metric_id, sl.default_variant(row.metric_id),
+                                           row.trailing_mean)
+                for row in feed.itertuples()
+            ],
+            native_movement=[
+                common.format_native_delta(row.metric_id, sl.default_variant(row.metric_id),
+                                           row.native_delta)
+                for row in feed.itertuples()
+            ],
+            priority_score=(feed["impact_score"] * 100).round(1),
+        )
+        st.dataframe(
+            display[["month", "metric", "scope", "latest_display", "trailing_display",
+                     "native_movement", "z", "priority_score", "direction"]].rename(
+                columns={"latest_display": "latest", "trailing_display": "trailing",
+                         "native_movement": "movement", "priority_score": "priority (0–100)"}),
+            width="stretch", hide_index=True,
+        )

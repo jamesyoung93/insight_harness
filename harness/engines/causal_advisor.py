@@ -1,10 +1,8 @@
-"""Causal design advisor: a design proposal engine, not an answer engine.
+"""Registered quasi-experimental designs for the synthetic pharma events.
 
-Given a causal question that matches a registered event, it proposes the
-appropriate quasi-experimental design, COMPUTES the assumption checks
-(pre-trend gap), runs the estimate, and computes sensitivity under the
-alternate metric variant. Output is tiered as Hypothesis — requires analyst
-validation. The 'arguments against' are calculated, never narrated.
+The advisor never upgrades a design proposal into a causal fact.  It executes
+the event's registered treated/control scopes, computes assumption checks, and
+returns a Hypothesis-tier artifact for analyst review.
 """
 from __future__ import annotations
 
@@ -12,131 +10,206 @@ import numpy as np
 import pandas as pd
 
 from .. import semantic_layer as sl
-from ..provenance import AnswerArtifact, TIER_HYPOTHESIS
+from ..provenance import AnswerArtifact, TIER_ABSTAINED, TIER_HYPOTHESIS
 from ..triage import Intent
 
-PRE_WINDOW = 6  # months used for the pre-period
+PRE_WINDOW = 6
+DESIGN_METRICS = ("trx", "nrx", "nbrx")
 
 
 def _monthly(df: pd.DataFrame, col: str, scope: dict) -> pd.Series:
-    for k, v in scope.items():
-        df = df[df[k] == v]
-    return df.groupby("month")[col].sum().sort_index()
+    scoped = sl.apply_filters(df, scope)
+    return scoped.groupby("month")[col].sum().sort_index()
 
 
-def _did(treated: pd.Series, control: pd.Series, start: str):
+def _did(treated: pd.Series, control: pd.Series, start: str,
+         months_limit: set[str] | None = None) -> dict:
     months = sorted(set(treated.index) & set(control.index))
-    pre = [m for m in months if m < start][-PRE_WINDOW:]
-    post = [m for m in months if m >= start]
+    if months_limit is not None:
+        months = [month for month in months if month in months_limit]
+    pre = [month for month in months if month < start][-PRE_WINDOW:]
+    post = [month for month in months if month >= start]
+    if len(pre) < 2 or not post:
+        raise ValueError("the registered design lacks enough aligned pre/post history")
+
     t_pre, t_post = treated[pre].mean(), treated[post].mean()
     c_pre, c_post = control[pre].mean(), control[post].mean()
-    naive_pct = (t_post - t_pre) / t_pre if t_pre else float("nan")
-    control_pct = (c_post - c_pre) / c_pre if c_pre else float("nan")
-    did_pct = naive_pct - control_pct  # ratio-based DiD: growth gap vs control
+    if not t_pre or not c_pre:
+        raise ValueError("the registered design has a zero pre-period denominator")
+    treated_growth = (t_post - t_pre) / t_pre
+    control_growth = (c_post - c_pre) / c_pre
+    did_pct = treated_growth - control_growth
     did_abs = did_pct * t_pre
-    # pre-trend check: slope gap between treated and control over the pre window
+
     x = np.arange(len(pre))
     slope_t = np.polyfit(x, treated[pre].values, 1)[0] / t_pre
     slope_c = np.polyfit(x, control[pre].values, 1)[0] / c_pre
-    return {"pre": pre, "post": post, "did_abs": did_abs, "did_pct": did_pct,
-            "naive_pct": naive_pct, "pretrend_gap_pp_per_month": (slope_t - slope_c) * 100,
-            "t_pre": t_pre, "t_post": t_post, "c_pre": c_pre, "c_post": c_post}
+    return {
+        "pre": pre, "post": post, "did_abs": float(did_abs),
+        "did_pct": float(did_pct), "treated_growth_pct": float(treated_growth),
+        "control_growth_pct": float(control_growth),
+        "pretrend_gap_pp_per_month": float((slope_t - slope_c) * 100),
+        "t_pre": float(t_pre), "t_post": float(t_post),
+        "c_pre": float(c_pre), "c_post": float(c_post),
+    }
 
 
-DESIGN_METRICS = ("trx", "nrx", "nbrx", "revenue", "units")
+def _refusal(intent: Intent, res: sl.Resolution, headline: str,
+             reframes: list[str]) -> AnswerArtifact:
+    art = AnswerArtifact(intent.question, intent.question_class, TIER_ABSTAINED,
+                         "abstention", headline="Declined: " + headline,
+                         resolution=res)
+    art.extras["reframes"] = reframes
+    return art
+
+
+def _filters_preserve_registered_scope(df: pd.DataFrame, event_scope: dict,
+                                       filters: dict) -> tuple[bool, str | None]:
+    """Allow repeated/implied scope wording, refuse exclusions or narrowing."""
+    registered = sl.apply_filters(df, event_scope)
+    asked = sl.apply_filters(registered, filters)
+    if asked.empty:
+        return False, "the requested filters exclude the registered treated population"
+    if len(asked) != len(registered):
+        return False, ("the requested filters narrow the treated population beyond the "
+                       "registered causal design")
+    return True, None
+
+
+def _source_series(metric: str, variant: str, source: str, event: dict) -> tuple[pd.Series, pd.Series]:
+    frame = sl.load_fact(source)
+    column = sl.column_for(metric, variant)
+    return (_monthly(frame, column, event["scope"]),
+            _monthly(frame, column, event["control_scope"]))
 
 
 def propose(intent: Intent, res: sl.Resolution) -> AnswerArtifact:
-    ev = sl.EVENTS[intent.event_id]
-    asked_metric = res.metric
-    registered = [m for m in ev.get("metrics", []) if m in DESIGN_METRICS]
-    metric = asked_metric if asked_metric in registered else (registered[0] if registered else "trx")
-    if metric != asked_metric:
-        # the design runs on a design-registered metric; the resolution must
-        # describe what actually ran, and the substitution is disclosed below
-        res = sl.resolve(metric)
-    df = sl.load_fact(res.source)
-    col = sl.column_for(metric, res.variant if res.variant in sl.METRICS[metric]["variants"] else
-                        sl.METRICS[metric]["default_variant"])
+    event = sl.EVENTS[intent.event_id]
+    registered = [metric for metric in event.get("metrics", []) if metric in DESIGN_METRICS]
+    default_metric = event.get("default_metric", registered[0] if registered else "trx")
+    if res.metric not in registered:
+        return _refusal(
+            intent, res,
+            f"'{event['name']}' has no registered design for "
+            f"{sl.METRICS[res.metric]['label']}; substituting another metric would "
+            "misstate the question.",
+            [f"What was the impact of {event['name']} on "
+             f"{sl.METRICS[default_metric]['label']}?"],
+        )
 
-    treated = _monthly(df, col, ev["scope"])
-    ctrl_scope = {"region": ev["candidate_controls"]["region"]}
-    cdf = df[df["region"].isin(ctrl_scope["region"])]
-    control = cdf.groupby("month")[col].sum().sort_index()
+    metric = res.metric
+    frame = sl.load_fact(res.source)
+    compatible, reason = _filters_preserve_registered_scope(frame, event["scope"],
+                                                            intent.filters)
+    if not compatible:
+        return _refusal(
+            intent, res, f"{reason}. The governed design covers "
+            f"{sl.scope_string(event['scope'])}.",
+            [f"What was the impact of {event['name']} on "
+             f"{sl.METRICS[metric]['label']}?"],
+        )
 
-    est = _did(treated, control, ev["start"])
+    column = sl.column_for(metric, res.variant)
+    treated = _monthly(frame, column, event["scope"])
+    control = _monthly(frame, column, event["control_scope"])
+    try:
+        estimate = _did(treated, control, event["start"])
+    except ValueError as exc:
+        return _refusal(intent, res, str(exc) + ".",
+                        [f"Trend {sl.METRICS[metric]['label']} by month"])
 
-    # computed sensitivity: does the conclusion hold under the alternate
-    # variant, and under the alternate registered source?
-    sens = {}
-    for v in sl.METRICS[metric]["variants"]:
-        alt_col = sl.column_for(metric, v)
-        alt = _did(_monthly(df, alt_col, ev["scope"]),
-                   df[df["region"].isin(ctrl_scope["region"])].groupby("month")[alt_col].sum().sort_index(),
-                   ev["start"])
-        sens[v] = alt["did_pct"]
+    # Variant sensitivity uses the exact same source and months as the primary
+    # estimate. Effects are dimensionless growth gaps, so currency and volume
+    # variants can be compared without comparing their levels.
+    variant_sensitivity: dict[str, float] = {}
+    for variant in sl.METRICS[metric]["variants"]:
+        alt_column = sl.column_for(metric, variant)
+        alt = _did(_monthly(frame, alt_column, event["scope"]),
+                   _monthly(frame, alt_column, event["control_scope"]),
+                   event["start"])
+        variant_sensitivity[variant] = alt["did_pct"]
 
-    src_sens = {}
-    for s in sl.METRICS[metric]["sources"]:
+    # Source sensitivity is explicitly aligned to the intersection of source
+    # calendars. A one-month panel lag can never masquerade as a source fork.
+    source_series: dict[str, tuple[pd.Series, pd.Series]] = {}
+    for source in sl.METRICS[metric]["sources"]:
         try:
-            sdf = sl.load_fact(s)
-            alt = _did(_monthly(sdf, col, ev["scope"]),
-                       sdf[sdf["region"].isin(ctrl_scope["region"])]
-                       .groupby("month")[col].sum().sort_index(),
-                       ev["start"])
-            src_sens[s] = alt["did_pct"]
-        except Exception:
-            continue  # a source that can't reproduce the design is omitted, not faked
+            source_series[source] = _source_series(metric, res.variant, source, event)
+        except (KeyError, OSError):
+            continue
+    aligned_months = set.intersection(*(
+        set(treated_series.index) & set(control_series.index)
+        for treated_series, control_series in source_series.values())) \
+        if source_series else set()
+    source_sensitivity: dict[str, float] = {}
+    source_windows: dict[str, dict] = {}
+    for source, (treated_series, control_series) in source_series.items():
+        try:
+            result = _did(treated_series, control_series, event["start"], aligned_months)
+        except ValueError:
+            continue
+        source_sensitivity[source] = result["did_pct"]
+        source_windows[source] = {"pre": result["pre"], "post": result["post"]}
 
-    pretrend_ok = abs(est["pretrend_gap_pp_per_month"]) < 0.5
-    short_post = len(est["post"]) < 4
-    fork_threshold = sl.materiality()  # the governed divergence threshold, in pp of effect
-
+    pretrend_ok = abs(estimate["pretrend_gap_pp_per_month"]) < 0.5
+    short_post = len(estimate["post"]) < 4
+    threshold = sl.materiality()
     checks = [
         {"check": "Parallel pre-trends (computed)",
-         "result": f"slope gap {est['pretrend_gap_pp_per_month']:+.2f} pp/month over {len(est['pre'])} pre months",
+         "result": (f"slope gap {estimate['pretrend_gap_pp_per_month']:+.2f} pp/month "
+                    f"over {len(estimate['pre'])} pre months"),
          "status": "pass" if pretrend_ok else "flag"},
         {"check": "Post-period length",
-         "result": f"{len(est['post'])} months since event",
+         "result": f"{len(estimate['post'])} months since event",
          "status": "flag" if short_post else "pass"},
         {"check": "Sensitivity to metric variant (computed)",
-         "result": " | ".join(f"{v}: {p*100:+.1f}%" for v, p in sens.items()),
-         "status": "pass" if (max(sens.values()) - min(sens.values())) < fork_threshold else "flag"},
-        {"check": "No concurrent event contaminating controls",
-         "result": ev["notes"], "status": "manual"},
+         "result": " | ".join(f"{key}: {value * 100:+.1f}%"
+                              for key, value in variant_sensitivity.items()),
+         "status": ("pass" if max(variant_sensitivity.values())
+                    - min(variant_sensitivity.values()) < threshold else "flag")},
+        {"check": "Concurrent-event review",
+         "result": event["notes"], "status": "manual"},
     ]
-    if len(src_sens) > 1:
+    if len(source_sensitivity) > 1:
         checks.insert(3, {
-            "check": "Sensitivity to source (computed)",
-            "result": " | ".join(f"{sl.SOURCES[s]['name']}: {p*100:+.1f}%"
-                                 for s, p in src_sens.items()),
-            "status": "pass" if (max(src_sens.values()) - min(src_sens.values()))
-            < fork_threshold else "flag"})
+            "check": "Sensitivity to source (common window)",
+            "result": " | ".join(
+                f"{sl.SOURCES[source]['name']}: {value * 100:+.1f}%"
+                for source, value in source_sensitivity.items()),
+            "status": ("pass" if max(source_sensitivity.values())
+                       - min(source_sensitivity.values()) < threshold else "flag"),
+        })
 
-    chart = pd.DataFrame({"month": treated.index, "treated": treated.values}) \
-        .merge(pd.DataFrame({"month": control.index, "control (avg-scaled)":
-                             control.values * (est["t_pre"] / est["c_pre"])}), on="month")
+    chart = pd.DataFrame({"month": treated.index, "treated": treated.values}).merge(
+        pd.DataFrame({"month": control.index,
+                      "control (avg-scaled)": control.values
+                      * (estimate["t_pre"] / estimate["c_pre"])}), on="month")
+    headline = (f"Design proposal: difference-in-differences for '{event['name']}' on "
+                f"{sl.METRICS[metric]['label']} — Hypothesis, pending analyst review")
+    code = (
+        f"treated = monthly(df, '{column}', {event['scope']})\n"
+        f"control = monthly(df, '{column}', {event['control_scope']})\n"
+        "treated_growth = (mean(post(treated)) - mean(pre(treated))) / mean(pre(treated))\n"
+        "control_growth = (mean(post(control)) - mean(pre(control))) / mean(pre(control))\n"
+        "did_pct = treated_growth - control_growth\n"
+        f"# pre={estimate['pre']}; post={estimate['post']}; source={res.source}; "
+        f"variant={res.variant}"
+    )
 
-    headline = (f"Design proposal: difference-in-differences for '{ev['name']}' on "
-                f"{sl.METRICS[metric]['label'].lower()} — Hypothesis, pending analyst review")
-
-    code = (f"treated = monthly(df, '{col}', {ev['scope']})\n"
-            f"control = monthly(df, '{col}', {ctrl_scope})\n"
-            f"DiD = (post(treated) - pre(treated)) - (post(control) - pre(control))\n"
-            f"pre window = {PRE_WINDOW}m; assumption checks computed, not asserted")
-
-    art = AnswerArtifact(intent.question, intent.question_class, TIER_HYPOTHESIS, "causal_advisor",
-                         headline=headline, value=float(est["did_pct"]), code=code, chart_df=chart)
-    art.resolution = res
-    art.extras = {"event": ev, "estimate": est, "checks": checks, "sensitivity": sens,
-                  "source_sensitivity": src_sens,
-                  "note": ("Causal estimates answer a narrow, designed version of 'why'. "
-                           "This one is publishable only after an analyst signs off on "
-                           "the checks above.")}
-    if metric != asked_metric and asked_metric in sl.METRICS:
-        art.caveats.append(f"The question referenced {sl.METRICS[asked_metric]['label'].lower()}; "
-                           f"the registered event design runs on "
-                           f"{sl.METRICS[metric]['label'].lower()}.")
+    art = AnswerArtifact(intent.question, intent.question_class, TIER_HYPOTHESIS,
+                         "causal_advisor", headline=headline,
+                         value=estimate["did_pct"], code=code, chart_df=chart,
+                         resolution=res)
+    art.extras = {
+        "event": event, "estimate": estimate, "checks": checks,
+        "sensitivity": variant_sensitivity,
+        "source_sensitivity": source_sensitivity,
+        "source_sensitivity_windows": source_windows,
+        "effective_scope": event["scope"], "control_scope": event["control_scope"],
+        "note": ("Causal estimates answer a narrow, registered version of 'why'. "
+                 "Analyst sign-off records review in provenance; the estimate remains "
+                 "Hypothesis-tier."),
+    }
     if short_post:
         art.caveats.append("Short post-period: estimate will move as more months arrive.")
     return art

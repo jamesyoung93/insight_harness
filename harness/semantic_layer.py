@@ -8,6 +8,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import time
+import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -18,6 +22,7 @@ import pandas as pd
 DATA_DIR = Path(__file__).parent.parent / "data"
 CONFIG_PATH = DATA_DIR / "governance_config.json"
 GOVERNANCE_LOG = DATA_DIR / "governance_log.jsonl"
+_AUDIT_HISTORY_LIMIT = 200
 
 # --------------------------------------------------------------------------- #
 # Source registry
@@ -29,8 +34,9 @@ SOURCES = {
         "cadence": "monthly",
         "lag_months": 0,
         "account_grain": True,
-        "notes": ["System of record at account grain for monthly synthetic data.",
-                  "Details, samples, programs, and writer activity are collected here only."],
+        "grain": ["account_id", "month"],
+        "notes": ["System of record at HCP-by-month grain for monthly synthetic data.",
+                  "Details, call plan, samples, programs, and writer activity are collected here only."],
     },
     "source_b": {
         "name": "Projected retail panel",
@@ -38,6 +44,8 @@ SOURCES = {
         "cadence": "monthly",
         "lag_months": 1,
         "account_grain": False,
+        "grain": ["month", "territory", "district", "region", "specialty",
+                  "payer_channel"],
         "notes": ["Panel-projected: known small multiplicative bias vs. direct/DDD feeds.",
                   "Latest month unavailable (1-month reporting lag).",
                   "Early history restated by the vendor."],
@@ -49,55 +57,52 @@ SOURCES = {
 # --------------------------------------------------------------------------- #
 METRICS = {
     "trx": {
-        "label": "TRx", "family": "prescriptions", "kind": "additive", "additive": True,
+        "label": "TRx", "family": "prescriptions", "digest_family": "rx_volume",
+        "kind": "additive", "additive": True,
         "sources": ["source_a", "source_b"], "default_source": "source_a",
         "default_variant": "units",
         "variants": {
-            "units": {"column": "trx_units", "label": "TRx units", "comparison_group": "volume", "owner": "Commercial Analytics", "notes": "Total prescriptions in unit equivalents."},
-            "dollars": {"column": "trx_dollars", "label": "TRx dollars", "comparison_group": "currency", "owner": "Finance", "notes": "Gross prescription value before rebates."},
-            "normalized": {"column": "trx_normalized", "label": "TRx normalized equivalents", "comparison_group": "volume", "owner": "Commercial Analytics", "notes": "Pack-size normalized equivalent units."},
+            "units": {"column": "trx_units", "label": "TRx units",
+                      "comparison_group": "volume", "format": "number",
+                      "owner": "Commercial Analytics",
+                      "notes": "Total prescriptions in unit equivalents."},
+            "dollars": {"column": "trx_dollars", "label": "TRx dollars",
+                        "comparison_group": "currency", "format": "currency",
+                        "owner": "Finance",
+                        "notes": "Gross prescription value before rebates."},
+            "normalized": {"column": "trx_normalized",
+                           "label": "TRx normalized equivalents",
+                           "comparison_group": "volume", "format": "number",
+                           "owner": "Commercial Analytics",
+                           "notes": "Payer-channel normalized equivalent units."},
         },
     },
     "nrx": {
-        "label": "NRx", "family": "new_prescriptions", "kind": "additive", "additive": True,
+        "label": "NRx", "family": "new_prescriptions", "digest_family": "rx_volume",
+        "kind": "additive", "additive": True,
         "sources": ["source_a", "source_b"], "default_source": "source_a",
         "default_variant": "units",
-        "variants": {"units": {"column": "nrx", "label": "NRx", "owner": "Brand Analytics", "notes": "New prescriptions in the month."}},
+        "variants": {"units": {"column": "nrx", "label": "NRx", "format": "number",
+                                "owner": "Brand Analytics",
+                                "notes": "New prescriptions in the month."}},
     },
     "nbrx": {
-        "label": "NBRx", "family": "new_to_brand", "kind": "additive", "additive": True,
+        "label": "NBRx", "family": "new_to_brand", "digest_family": "rx_volume",
+        "kind": "additive", "additive": True,
         "sources": ["source_a", "source_b"], "default_source": "source_a",
         "default_variant": "units",
-        "variants": {"units": {"column": "nbrx", "label": "NBRx", "owner": "Brand Analytics", "notes": "New-to-brand prescriptions in the month."}},
+        "variants": {"units": {"column": "nbrx", "label": "NBRx", "format": "number",
+                                "owner": "Brand Analytics",
+                                "notes": "New-to-brand prescriptions in the month."}},
     },
     "trx_share": {
         "label": "TRx market share", "family": "share", "kind": "ratio", "additive": False,
         "sources": ["source_a", "source_b"], "default_source": "source_a",
         "default_variant": "brand_market",
         "variants": {"brand_market": {"numerator": "trx_units", "denominator": "market_trx",
-                                        "label": "TRx market share", "owner": "Brand Analytics",
+                                        "label": "TRx market share", "format": "percent",
+                                        "owner": "Brand Analytics",
                                         "notes": "Brand TRx divided by total market TRx; descriptive only."}},
-    },
-    "revenue": {
-        "label": "Revenue",
-        "additive": True,
-        "sources": ["source_a", "source_b"],
-        "default_source": "source_a",
-        "default_variant": "net",
-        "variants": {
-            "net":   {"column": "revenue_net",   "label": "Net revenue",
-                      "owner": "Finance", "notes": "Gross less contractual segment discounts. Board-reported."},
-            "gross": {"column": "revenue_gross", "label": "Gross revenue",
-                      "owner": "Sales Ops", "notes": "Pre-discount bookings view used in territory scorecards."},
-        },
-    },
-    "units": {
-        "label": "Units",
-        "additive": True,
-        "sources": ["source_a", "source_b"],
-        "default_source": "source_a",
-        "default_variant": "std",
-        "variants": {"std": {"column": "units", "label": "Units", "owner": "Sales Ops", "notes": ""}},
     },
     "calls": {
         "label": "Details",
@@ -106,42 +111,82 @@ METRICS = {
         "sources": ["source_a"],
         "default_source": "source_a",
         "default_variant": "std",
-        "variants": {"std": {"column": "calls", "label": "Sales calls", "owner": "Sales Ops",
+        "variants": {"std": {"column": "calls", "label": "Details delivered",
+                             "format": "number", "owner": "Sales Operations",
                              "notes": "Internally collected; uniform definition across regions."}},
     },
-    "new_customers": {
-        "label": "New customers",
-        "additive": True,
-        "sources": ["source_a"],
-        "default_source": "source_a",
-        "default_variant": "strict",
-        "variants": {
-            "strict": {"column": "new_cust_strict", "label": "New customers (strict)",
-                       "owner": "Finance", "notes": "First purchase ever. Excludes reactivations."},
-            "broad":  {"column": "new_cust_broad", "label": "New customers (broad)",
-                       "owner": "Marketing", "notes": "Includes reactivated lapsed accounts. Campaign reporting."},
-        },
+    "call_plan": {
+        "label": "Call plan", "family": "field_effort", "kind": "additive",
+        "additive": True, "sources": ["source_a"], "default_source": "source_a",
+        "default_variant": "planned",
+        "variants": {"planned": {"column": "call_plan", "label": "Planned details",
+                                  "format": "number", "owner": "Sales Operations",
+                                  "notes": "Governed monthly HCP detail plan."}},
+    },
+    "call_attainment": {
+        "label": "Call-plan attainment", "family": "field_effort", "kind": "ratio",
+        "additive": False, "sources": ["source_a"], "default_source": "source_a",
+        "default_variant": "actual_plan",
+        "variants": {"actual_plan": {"numerator": "calls", "denominator": "call_plan",
+                                     "label": "Call-plan attainment", "format": "percent",
+                                     "owner": "Sales Operations",
+                                     "notes": "Details delivered divided by planned details."}},
     },
     "samples": {
         "label": "Samples dropped", "family": "field_effort", "kind": "additive", "additive": True,
         "sources": ["source_a"], "default_source": "source_a", "default_variant": "units",
-        "variants": {"units": {"column": "samples", "label": "Sample units", "owner": "Sales Operations", "notes": "Recorded sample units."}},
+        "variants": {"units": {"column": "samples", "label": "Sample units",
+                                "format": "number", "owner": "Sales Operations",
+                                "notes": "Recorded sample units."}},
     },
     "speaker_attendance": {
         "label": "Speaker attendance", "family": "programs", "kind": "additive", "additive": True,
         "sources": ["source_a"], "default_source": "source_a", "default_variant": "attendees",
-        "variants": {"attendees": {"column": "speaker_attendance", "label": "Speaker-program attendance", "owner": "Marketing Operations", "notes": "Recorded HCP attendance."}},
+        "variants": {"attendees": {"column": "speaker_attendance",
+                                    "label": "Speaker-program attendance", "format": "number",
+                                    "owner": "Marketing Operations",
+                                    "notes": "Recorded HCP attendance."}},
     },
     "new_writers": {
         "label": "New writers", "family": "writers", "kind": "additive", "additive": True,
         "sources": ["source_a"], "default_source": "source_a", "default_variant": "strict",
-        "variants": {"strict": {"column": "new_writers", "label": "New writers", "owner": "Brand Analytics", "notes": "First observed brand prescription in the measured history."}},
+        "variants": {"strict": {"column": "new_writers", "label": "New writers",
+                                 "format": "number", "owner": "Brand Analytics",
+                                 "notes": "First observed brand prescription in the measured history."}},
     },
 }
 
-DIMENSIONS = ["territory", "district", "region", "specialty", "payer_channel",
-              "segment", "channel"]
+DIMENSIONS = ["territory", "district", "region", "specialty", "payer_channel"]
 MATERIALITY_REL = 0.02  # divergence above 2% is surfaced (registry default)
+
+
+@contextmanager
+def _path_lock(path: Path, timeout_seconds: float = 5.0):
+    """Small cross-process lock for governance read/modify/write sequences."""
+    lock_path = path.with_suffix(path.suffix + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + timeout_seconds
+    descriptor = None
+    while descriptor is None:
+        try:
+            descriptor = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(descriptor, f"{os.getpid()}\n".encode("ascii"))
+        except FileExistsError:
+            try:
+                if time.time() - lock_path.stat().st_mtime > 30.0:
+                    lock_path.unlink(missing_ok=True)
+                    continue
+            except OSError:
+                pass
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"timed out acquiring governance lock: {lock_path}")
+            time.sleep(0.01)
+    try:
+        yield
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        lock_path.unlink(missing_ok=True)
 
 
 # --------------------------------------------------------------------------- #
@@ -150,9 +195,41 @@ MATERIALITY_REL = 0.02  # divergence above 2% is surfaced (registry default)
 # --------------------------------------------------------------------------- #
 def _governance_config() -> dict:
     try:
-        return json.loads(CONFIG_PATH.read_text())
+        value = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else {}
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return {}
+
+
+def _governance_settings(cfg: dict) -> dict:
+    """Return public settings only; audit records never recursively contain history."""
+    return json.loads(json.dumps({k: v for k, v in cfg.items()
+                                  if k != "_audit_history"}))
+
+
+def _atomic_write_config(cfg: dict) -> None:
+    """Durably write the config payload before atomically publishing it."""
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = CONFIG_PATH.with_suffix(CONFIG_PATH.suffix + f".{os.getpid()}.tmp")
+    try:
+        with tmp_path.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(json.dumps(cfg, indent=2, sort_keys=True) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, CONFIG_PATH)
+        # Best-effort directory sync where the platform permits opening one.
+        try:
+            descriptor = os.open(CONFIG_PATH.parent,
+                                 os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        except OSError:
+            descriptor = None
+        if descriptor is not None:
+            try:
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
 
 def materiality() -> float:
@@ -166,53 +243,109 @@ def default_variant(metric: str) -> str:
 
 
 def set_governance(materiality_rel: float | None = None,
-                   default_variants: dict | None = None) -> dict:
+                   default_variants: dict | None = None,
+                   actor: str | None = None) -> dict:
     """Apply and log a governance change; returns what actually changed."""
-    cfg = _governance_config()
-    change: dict = {}
-    if materiality_rel is not None and 0.005 <= materiality_rel <= 0.20 \
-            and materiality_rel != materiality():
-        cfg["materiality_rel"] = float(materiality_rel)
-        change["materiality_rel"] = float(materiality_rel)
-    for m, v in (default_variants or {}).items():
-        if m in METRICS and v in METRICS[m]["variants"] and v != default_variant(m):
-            cfg.setdefault("default_variants", {})[m] = v
-            change.setdefault("default_variants", {})[m] = v
-    if not change:
+    with _path_lock(CONFIG_PATH):
+        cfg = _governance_config()
+        before = _governance_settings(cfg)
+        change: dict = {}
+        current_materiality = cfg.get("materiality_rel", MATERIALITY_REL)
+        if not isinstance(current_materiality, (int, float)):
+            current_materiality = MATERIALITY_REL
+        if materiality_rel is not None and 0.005 <= materiality_rel <= 0.20 \
+                and float(materiality_rel) != float(current_materiality):
+            cfg["materiality_rel"] = float(materiality_rel)
+            change["materiality_rel"] = float(materiality_rel)
+        configured_variants = cfg.setdefault("default_variants", {})
+        for metric, variant in (default_variants or {}).items():
+            current = configured_variants.get(metric, METRICS.get(metric, {}).get("default_variant"))
+            if metric in METRICS and variant in METRICS[metric]["variants"] and variant != current:
+                configured_variants[metric] = variant
+                change.setdefault("default_variants", {})[metric] = variant
+        if not configured_variants:
+            cfg.pop("default_variants", None)
+        if not change:
+            return change
+
+        after = _governance_settings(cfg)
+        rec = {
+            "change_id": uuid.uuid4().hex,
+            "ts": datetime.now(timezone.utc).isoformat(timespec="microseconds"),
+            "actor": actor or "unspecified",
+            "before": before,
+            "after": after,
+            "change": change,
+        }
+        history = cfg.get("_audit_history", [])
+        if not isinstance(history, list):
+            history = []
+        cfg["_audit_history"] = [item for item in history if isinstance(item, dict)]
+        cfg["_audit_history"].append(rec)
+        cfg["_audit_history"] = cfg["_audit_history"][-_AUDIT_HISTORY_LIMIT:]
+
+        # The embedded record and settings become visible in one atomic replace,
+        # so a crash can never publish an unaudited governance change.
+        _atomic_write_config(cfg)
+
+        # Keep JSONL for append-friendly operations/export. It is a mirror: the
+        # embedded bounded history above remains authoritative if this append is
+        # interrupted or the mirror is lost.
+        try:
+            GOVERNANCE_LOG.parent.mkdir(parents=True, exist_ok=True)
+            with GOVERNANCE_LOG.open("a", encoding="utf-8", newline="\n") as handle:
+                handle.write(json.dumps(rec, sort_keys=True) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+        except OSError:
+            pass
         return change
-    CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
-    rec = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"), "change": change}
-    with GOVERNANCE_LOG.open("a") as f:
-        f.write(json.dumps(rec) + "\n")
-    return change
 
 
 def governance_log() -> list[dict]:
-    if not GOVERNANCE_LOG.exists():
-        return []
-    out = []
-    for line in GOVERNANCE_LOG.read_text().splitlines():
+    """Merge the export mirror with authoritative audit records in config."""
+    candidates: list[dict] = []
+    try:
+        lines = GOVERNANCE_LOG.read_text(encoding="utf-8").splitlines()
+    except (FileNotFoundError, OSError):
+        lines = []
+    for line in lines:
         try:
-            out.append(json.loads(line))
+            record = json.loads(line)
+            if isinstance(record, dict):
+                candidates.append(record)
         except json.JSONDecodeError:
             continue
-    return out
+    embedded = _governance_config().get("_audit_history", [])
+    if isinstance(embedded, list):
+        candidates.extend(record for record in embedded if isinstance(record, dict))
+
+    out: list[dict] = []
+    seen: set[str] = set()
+    for record in candidates:
+        key = str(record.get("change_id") or json.dumps(record, sort_keys=True))
+        if key not in seen:
+            seen.add(key)
+            out.append(record)
+    # Python's stable sort preserves append order for legacy second-resolution
+    # records that share a timestamp; new records use microsecond resolution.
+    return sorted(out, key=lambda record: str(record.get("ts", "")))
 
 # keyword -> metric mapping used by the built-in parser and by the
 # language-model translator's registry context
 METRIC_KEYWORDS = {
     "trx market share": "trx_share", "market share": "trx_share", "share": "trx_share",
-    "total prescriptions": "trx", "total scripts": "trx", "trx": "trx", "scripts": "trx",
+    "total prescriptions": "trx", "total scripts": "trx", "prescriptions": "trx",
+    "rx volume": "trx", "trx": "trx", "scripts": "trx",
     "new-to-brand": "nbrx", "new to brand": "nbrx", "nbrx": "nbrx",
     "new prescriptions": "nrx", "nrx": "nrx",
-    "details": "calls", "detail calls": "calls",
+    "call plan attainment": "call_attainment", "call-plan attainment": "call_attainment",
+    "attainment": "call_attainment",
+    "planned calls": "call_plan", "call plan": "call_plan",
+    "details": "calls", "detail calls": "calls", "calls": "calls",
     "samples": "samples", "sample units": "samples",
     "speaker attendance": "speaker_attendance", "speaker programs": "speaker_attendance",
     "new writers": "new_writers", "writers": "new_writers",
-    "revenue": "revenue", "sales": "revenue", "bookings": "revenue",
-    "units": "units", "volume": "units",
-    "calls": "calls", "activity": "calls",
-    "new customers": "new_customers", "new customer": "new_customers", "acquisitions": "new_customers",
 }
 
 # --------------------------------------------------------------------------- #
@@ -220,44 +353,30 @@ METRIC_KEYWORDS = {
 # --------------------------------------------------------------------------- #
 EVENTS = {
     "speaker_launch": {
-        "name": "Speaker-program launch (East)", "start": "2025-10",
-        "scope": {"region": "East"}, "metrics": ["trx", "nrx", "nbrx"],
+        "name": "Speaker-program launch (East territory cluster)", "start": "2025-10",
+        "scope": {"territory": ["E-CAR-01", "E-END-01"]},
+        "control_scope": {"territory": ["N-CAR-01", "N-END-01"]},
+        "metrics": ["trx", "nrx", "nbrx"], "default_metric": "trx",
         "keywords": ["east", "speaker", "speaker program", "program launch"],
-        "candidate_controls": {"region": ["North", "South"]},
-        "notes": "Region-wide program; West excluded because of a concurrent competitor shock.",
+        "notes": "Two registered East territories with matched North-territory controls.",
     },
     "formulary_win": {
         "name": "Medicare Part D formulary win (South)", "start": "2026-01",
-        "scope": {"region": "South"}, "metrics": ["trx", "nrx"],
+        "scope": {"region": "South", "payer_channel": "Medicare Part D"},
+        "control_scope": {"region": ["North", "East"],
+                          "payer_channel": "Medicare Part D"},
+        "metrics": ["trx", "nrx"], "default_metric": "trx",
         "keywords": ["south", "formulary", "medicare", "payer win"],
-        "candidate_controls": {"region": ["North", "East"]},
-        "notes": "Monthly synthetic event used to test a payer-channel hypothesis.",
+        "notes": "South Medicare Part D only; controls retain the same payer channel.",
     },
     "competitor_launch": {
         "name": "Competitor launch (West / Cardiology)", "start": "2026-04",
         "scope": {"region": "West", "specialty": "Cardiology"},
-        "metrics": ["trx", "nrx", "nbrx"],
+        "control_scope": {"region": ["North", "South", "East"],
+                          "specialty": "Cardiology"},
+        "metrics": ["trx", "nrx", "nbrx"], "default_metric": "trx",
         "keywords": ["west", "competitor", "cardiology", "competitor launch"],
-        "candidate_controls": {"region": ["North", "South", "East"]},
-        "notes": "Short post-period; treated specialty is explicitly registered.",
-    },
-    "east_program": {
-        "name": "Partner enablement program (East)",
-        "start": "2025-10",
-        "scope": {"region": "East"},
-        "metrics": ["revenue", "units"],
-        "keywords": ["east", "program", "enablement", "partner program"],
-        "candidate_controls": {"region": ["North", "South"]},
-        "notes": "Rolled out region-wide in East; West excluded as control (concurrent shock).",
-    },
-    "west_shock": {
-        "name": "Competitor entry (West / Enterprise)",
-        "start": "2026-04",
-        "scope": {"region": "West", "segment": "Enterprise"},
-        "metrics": ["revenue"],
-        "keywords": ["west", "competitor", "drop", "decline"],
-        "candidate_controls": {"region": ["North", "South", "East"]},
-        "notes": "Short post-period (limited months of data since event).",
+        "notes": "Short post-period; controls retain Cardiology and exclude West.",
     },
 }
 
@@ -355,11 +474,16 @@ def metric_kind(metric: str) -> str:
 
 
 def aggregate_metric(df: pd.DataFrame, metric: str, variant: str) -> float:
-    """Aggregate additive and ratio metrics without ever summing percentages."""
+    """Aggregate additive and ratio metrics without ever summing percentages.
+
+    Undefined ratios remain NaN.  Reporting zero would turn missing exposure
+    into an observed zero rate, which is a materially different claim.
+    """
     spec = METRICS[metric]["variants"][variant]
     if metric_kind(metric) == "ratio":
         denominator = float(df[spec["denominator"]].sum())
-        return float(df[spec["numerator"]].sum()) / denominator if denominator else 0.0
+        return float(df[spec["numerator"]].sum()) / denominator \
+            if denominator else float("nan")
     return float(df[spec["column"]].sum())
 
 
@@ -368,5 +492,5 @@ def monthly_metric(df: pd.DataFrame, metric: str, variant: str) -> pd.Series:
     if metric_kind(metric) == "ratio":
         numerator = df.groupby("month")[spec["numerator"]].sum()
         denominator = df.groupby("month")[spec["denominator"]].sum()
-        return numerator.div(denominator.where(denominator != 0)).fillna(0.0).sort_index()
+        return numerator.div(denominator.where(denominator != 0)).sort_index()
     return df.groupby("month")[spec["column"]].sum().sort_index()

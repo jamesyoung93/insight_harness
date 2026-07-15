@@ -1,5 +1,4 @@
-"""Causal Studio: a review surface. Question → design → computed assumption
-checks → estimate with naive comparison → sensitivity → analyst sign-off."""
+"""Causal Studio: design, assumption checks, estimate, sensitivity, and review."""
 from __future__ import annotations
 
 import logging
@@ -16,7 +15,8 @@ def render() -> None:
     st.title("Causal Studio")
     st.caption("Attribution is a designed analysis, not a narrative. The studio matches your "
                "question to a registered event, proposes a study design, computes the assumption "
-               "checks, and holds the result at Hypothesis until an analyst signs off.")
+               "checks, and keeps the result Hypothesis-tier. Authenticated analyst sign-off "
+               "is recorded as provenance; it does not promote the tier.")
 
     # widget-keyed state is dropped when another page renders; restore the
     # selection so the studio keeps its context across navigation
@@ -27,16 +27,22 @@ def render() -> None:
     st.session_state["_studio_event_last"] = eid
     with st.expander("Event registry"):
         for ev in sl.EVENTS.values():
+            scope = ", ".join(
+                f"{key}={', '.join(map(str, value)) if isinstance(value, (list, tuple)) else value}"
+                for key, value in ev["scope"].items()
+            )
             st.markdown(f"- **{ev['name']}** — from {ev['start']}, scope "
-                        f"{', '.join(f'{k}={v}' for k, v in ev['scope'].items())}, "
+                        f"{scope}, "
                         f"metrics: {', '.join(ev['metrics'])}. {ev['notes']}")
 
     autorun = st.session_state.pop("studio_autorun", False)
     metric = st.session_state.pop("studio_metric", None)
     if st.button("Propose a design", type="primary") or autorun:
         ev = sl.EVENTS[eid]
-        metric = metric if metric in DESIGN_METRICS else "revenue"
-        question = f"What was the impact of {ev['name']} on {sl.METRICS[metric]['label'].lower()}?"
+        registered = [candidate for candidate in ev.get("metrics", ())
+                      if candidate in DESIGN_METRICS]
+        metric = metric if metric in registered else registered[0]
+        question = f"What was the impact of {ev['name']} on {sl.METRICS[metric]['label']}?"
         intent = triage.Intent(question, triage.CAUSAL, metric, {}, event_id=eid)
         try:
             with st.spinner("Computing the design and its checks…"):

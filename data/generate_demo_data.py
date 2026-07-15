@@ -1,21 +1,17 @@
-"""Generate placeholder demo data with documented ground truth.
+"""Generate the deterministic, internally reconciled pharma demo dataset.
 
-This is a stand-in for the full simulated benchmark dataset. It deliberately
-bakes in the classes of issues the harness must handle, and exports the
-ground truth to ground_truth.json so the evaluation page can score against it.
+The benchmark has two deliberately different source products:
 
-Baked-in structure (all documented, all recoverable):
-  1. TREND + SEASONALITY  : mild upward trend, Q4 seasonal bump.
-  2. CAUSAL EVENT (lift)  : "Partner enablement program" in East, from 2025-10,
-                            true effect = +8% on revenue & units (DiD target).
-  3. CAUSAL EVENT (shock) : "Competitor entry" hits West/Enterprise from 2026-04,
-                            true effect = -22% revenue (decomposition/anomaly target).
-  4. SOURCE DISAGREEMENT  : source_b is a panel-projected external feed:
-                            +3% avg multiplicative bias (varies by region),
-                            1-month reporting lag (latest month missing),
-                            first 3 months restated (+1.5%).
-  5. METRIC VARIANTS      : revenue_net vs revenue_gross (segment discount rates);
-                            new_cust_strict vs new_cust_broad (reactivations).
+* ``source_a`` is account-month grain and is the system of record for
+  prescriptions, field effort, samples, programs, and writer activity.
+* ``source_b`` is an aggregated projected retail panel with an exact,
+  registered regional projection factor, a one-month lag, and an exact early
+  history restatement.  It never pretends to have account or field-effort
+  grain.
+
+All random state is local to :func:`build_demo`.  Calling it repeatedly with
+the same seed returns byte-stable frames; no module-global RNG can leak state
+between test runs or notebook calls.
 """
 from __future__ import annotations
 
@@ -27,178 +23,331 @@ import numpy as np
 import pandas as pd
 
 HERE = Path(__file__).parent
-RNG = np.random.default_rng(42)
+SEED = 42
 
 MONTHS = pd.period_range("2024-07", "2026-06", freq="M").astype(str).tolist()
-REGIONS = ["North", "South", "East", "West"]
-SEGMENTS = ["Enterprise", "MidMarket", "SMB"]
-CHANNELS = ["Direct", "Partner"]
-SPECIALTY = {"Enterprise": "Cardiology", "MidMarket": "Endocrinology",
-             "SMB": "Primary Care"}
-PAYER = {("Enterprise", "Direct"): "Commercial",
-         ("Enterprise", "Partner"): "Medicare Part D",
-         ("MidMarket", "Direct"): "Commercial",
-         ("MidMarket", "Partner"): "Medicaid",
-         ("SMB", "Direct"): "Cash",
-         ("SMB", "Partner"): "Medicare Part D"}
+REGIONS = ("North", "South", "East", "West")
+SPECIALTIES = ("Primary Care", "Cardiology", "Endocrinology")
+PAYER_CHANNELS = ("Commercial", "Medicare Part D", "Medicaid", "Cash")
 
-BASE = {("Enterprise",): 90.0, ("MidMarket",): 55.0, ("SMB",): 30.0}
-REGION_MULT = {"North": 1.15, "South": 0.9, "East": 1.0, "West": 1.05}
-CHANNEL_SHARE = {"Direct": 0.62, "Partner": 0.38}
-DISCOUNT = {"Enterprise": 0.18, "MidMarket": 0.12, "SMB": 0.07}  # gross -> net
+REGION_CODE = {"North": "N", "South": "S", "East": "E", "West": "W"}
+SPECIALTY_CODE = {"Primary Care": "PCP", "Cardiology": "CAR",
+                  "Endocrinology": "END"}
 
-EAST_PROGRAM_START = "2025-10"   # true lift +8% (revenue, units) in East
-EAST_LIFT = 0.08
-WEST_SHOCK_START = "2026-04"     # true drop -22% on West/Enterprise revenue
-WEST_SHOCK = -0.22
 SOURCE_B_BIAS = {"North": 1.025, "South": 1.035, "East": 1.030, "West": 1.032}
-SOURCE_B_RESTATED = MONTHS[:3]   # restated history
-SOURCE_B_LAG = 1                 # latest month absent
+SOURCE_B_RESTATED = tuple(MONTHS[:3])
+SOURCE_B_RESTATEMENT_FACTOR = 1.015
+SOURCE_B_LAG = 1
+
+SPEAKER_START = "2025-10"
+SPEAKER_TERRITORIES = ("E-CAR-01", "E-END-01")
+SPEAKER_CONTROLS = ("N-CAR-01", "N-END-01")
+SPEAKER_LIFT = 0.08
+
 FORMULARY_START = "2026-01"
 FORMULARY_LIFT = 0.10
 
+COMPETITOR_START = "2026-04"
+COMPETITOR_SHOCK = -0.22
 
-def month_index(m: str) -> int:
-    return MONTHS.index(m)
+RX_COLUMNS = ("trx_units", "trx_dollars", "trx_normalized", "nrx", "nbrx",
+              "market_trx")
+PANEL_KEYS = ("month", "territory", "district", "region", "specialty",
+              "payer_channel")
 
 
-def build_fact() -> pd.DataFrame:
-    rows = []
-    for mi, m in enumerate(MONTHS):
-        trend = 1.0 + 0.004 * mi
-        season = 1.10 if m[-2:] in ("10", "11", "12") else 1.0
-        for r in REGIONS:
-            for s in SEGMENTS:
-                for c in CHANNELS:
-                    mu = BASE[(s,)] * REGION_MULT[r] * CHANNEL_SHARE[c] * trend * season
-                    noise = RNG.normal(1.0, 0.045)
-                    rev = mu * noise
-                    # causal event 1: East program lift
-                    if r == "East" and month_index(m) >= month_index(EAST_PROGRAM_START):
-                        rev *= 1 + EAST_LIFT
-                    # causal event 2: West/Enterprise competitor shock
-                    if r == "West" and s == "Enterprise" and month_index(m) >= month_index(WEST_SHOCK_START):
-                        rev *= 1 + WEST_SHOCK
-                    units = rev / (2.4 if s == "Enterprise" else 1.6 if s == "MidMarket" else 0.9)
-                    units *= RNG.normal(1.0, 0.02)
-                    if r == "South" and c == "Partner" and month_index(m) >= month_index(FORMULARY_START):
-                        units *= 1 + FORMULARY_LIFT
-                    calls = max(0, RNG.normal(46 if c == "Direct" else 24, 5)) * REGION_MULT[r]
-                    ncs = max(0, RNG.poisson(6 if s == "SMB" else 3))
-                    district = f"{r} District {'1' if s == 'Enterprise' else '2'}"
-                    territory = f"{r[:1]}-{s[:2].upper()}-{'A' if c == 'Direct' else 'B'}"
-                    trx = max(0.0, units * 10.0)
-                    nrx = trx * (0.16 if s == "Enterprise" else 0.20 if s == "MidMarket" else 0.24)
-                    nbrx = nrx * (0.68 if c == "Direct" else 0.76)
-                    market_trx = trx / (0.105 + 0.012 * (r == "East") + 0.006 * (s == "Enterprise"))
-                    rows.append({
-                        "month": m, "region": r, "segment": s, "channel": c,
-                        "district": district, "territory": territory,
-                        "specialty": SPECIALTY[s], "payer_channel": PAYER[(s, c)],
-                        "revenue_gross": round(rev, 3),
-                        "revenue_net": round(rev * (1 - DISCOUNT[s]), 3),
-                        "units": round(units, 2),
-                        "calls": round(calls, 1),
-                        "new_cust_strict": int(ncs),
-                        "new_cust_broad": int(ncs + RNG.poisson(1.4)),
-                        "trx_units": round(trx, 2),
-                        "trx_dollars": round(trx * (118.0 if s == "Enterprise" else 94.0), 2),
-                        "trx_normalized": round(trx * (0.96 if c == "Partner" else 1.0), 2),
-                        "nrx": round(nrx, 2), "nbrx": round(nbrx, 2),
-                        "market_trx": round(market_trx, 2),
-                        "samples": int(max(0, calls * RNG.normal(3.2, 0.35))),
-                        "speaker_attendance": int(max(0, RNG.poisson(4 if c == "Partner" else 2))),
-                        "new_writers": int(max(0, round(ncs * RNG.normal(1.35, 0.15)))),
-                    })
+def month_index(month: str) -> int:
+    return MONTHS.index(month)
+
+
+def _territory(region: str, specialty: str, number: int) -> str:
+    return f"{REGION_CODE[region]}-{SPECIALTY_CODE[specialty]}-{number:02d}"
+
+
+def build_universe(rng: np.random.Generator) -> pd.DataFrame:
+    """Create a stable 240-HCP universe and its governed hierarchy."""
+    rows: list[dict] = []
+    serial = 0
+    specialty_base = {"Primary Care": 17.0, "Cardiology": 29.0,
+                      "Endocrinology": 23.0}
+    for region in REGIONS:
+        for local in range(60):
+            serial += 1
+            specialty = SPECIALTIES[local // 20]
+            territory_number = local % 2 + 1
+            payer = PAYER_CHANNELS[(local + REGIONS.index(region)) % len(PAYER_CHANNELS)]
+            baseline = specialty_base[specialty] * rng.lognormal(0.0, 0.38)
+            first_idx = 0 if rng.random() < 0.72 else int(rng.integers(1, len(MONTHS)))
+            rows.append({
+                "account_id": f"HCP{serial:04d}",
+                "name": f"Dr. Morgan {serial:03d}",
+                "territory": _territory(region, specialty, territory_number),
+                "district": f"{region} District {territory_number}",
+                "region": region,
+                "specialty": specialty,
+                "payer_channel": payer,
+                "baseline_monthly_trx": baseline,
+                "first_writer_idx": first_idx,
+                "price_per_trx": {"Primary Care": 88.0, "Cardiology": 126.0,
+                                  "Endocrinology": 108.0}[specialty]
+                                  * {"Commercial": 1.08, "Medicare Part D": 0.96,
+                                     "Medicaid": 0.82, "Cash": 1.0}[payer],
+            })
+
+    universe = pd.DataFrame(rows)
+    # Stable baseline deciles select a deterministic lapsed high-value cohort.
+    universe["baseline_decile"] = pd.qcut(
+        universe["baseline_monthly_trx"].rank(method="first"), 10,
+        labels=False) + 1
+    universe["lapse_idx"] = pd.Series([pd.NA] * len(universe), dtype="Int64")
+    high_value = universe.index[universe["baseline_decile"] >= 8].tolist()
+    for order, idx in enumerate(high_value):
+        if order % 3 == 0:
+            universe.loc[idx, "lapse_idx"] = 18 + (order % 4)
+            universe.loc[idx, "first_writer_idx"] = 0
+    # Registered causal cohorts and their controls have complete, stable
+    # writer history. This keeps the benchmark's counterfactual identifiable;
+    # new-writer and lapse behavior remains in the rest of the universe.
+    protected = (
+        universe["territory"].isin(SPEAKER_TERRITORIES + SPEAKER_CONTROLS)
+        | ((universe["region"].isin(["North", "South", "East"]))
+           & (universe["payer_channel"] == "Medicare Part D"))
+        | (universe["specialty"] == "Cardiology")
+    )
+    universe.loc[protected, "first_writer_idx"] = 0
+    universe.loc[protected, "lapse_idx"] = pd.NA
+    whitespace_candidates = universe[(universe["baseline_decile"] >= 8) & ~protected] \
+        .sort_values("baseline_monthly_trx", ascending=False).head(12).index
+    universe.loc[whitespace_candidates, "first_writer_idx"] = 0
+    universe.loc[whitespace_candidates, "lapse_idx"] = 21
+    return universe
+
+
+def _event_multiplier(row: pd.Series, month: str) -> tuple[float, dict[str, int]]:
+    speaker = int(row["territory"] in SPEAKER_TERRITORIES and month >= SPEAKER_START)
+    formulary = int(row["region"] == "South"
+                    and row["payer_channel"] == "Medicare Part D"
+                    and month >= FORMULARY_START)
+    competitor = int(row["region"] == "West"
+                     and row["specialty"] == "Cardiology"
+                     and month >= COMPETITOR_START)
+    multiplier = ((1.0 + SPEAKER_LIFT) ** speaker
+                  * (1.0 + FORMULARY_LIFT) ** formulary
+                  * (1.0 + COMPETITOR_SHOCK) ** competitor)
+    return multiplier, {
+        "speaker_launch_active": speaker,
+        "formulary_win_active": formulary,
+        "competitor_launch_active": competitor,
+    }
+
+
+def build_fact(universe: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+    """Build source A at one row per HCP per month."""
+    rows: list[dict] = []
+    region_mult = {"North": 1.06, "South": 0.94, "East": 1.00, "West": 1.03}
+    base_share = {"Primary Care": 0.086, "Cardiology": 0.112,
+                  "Endocrinology": 0.101}
+
+    for mi, month in enumerate(MONTHS):
+        trend = 1.0 + 0.0035 * mi
+        seasonality = 1.07 if month[-2:] in ("10", "11", "12") else 1.0
+        for _, hcp in universe.iterrows():
+            started = mi >= int(hcp["first_writer_idx"])
+            lapse_idx = hcp["lapse_idx"]
+            lapsed = pd.notna(lapse_idx) and mi >= int(lapse_idx)
+            potential = (float(hcp["baseline_monthly_trx"])
+                         * region_mult[hcp["region"]] * trend * seasonality)
+            event_multiplier, event_flags = _event_multiplier(hcp, month)
+            trx = potential * event_multiplier if started and not lapsed else 0.0
+
+            nrx_rate = {"Primary Care": 0.235, "Cardiology": 0.165,
+                        "Endocrinology": 0.205}[hcp["specialty"]]
+            nrx = min(trx, trx * nrx_rate)
+            nbrx_rate = {"Commercial": 0.71, "Medicare Part D": 0.68,
+                         "Medicaid": 0.75, "Cash": 0.64}[hcp["payer_channel"]]
+            nbrx = min(nrx, nrx * nbrx_rate)
+
+            # The market denominator follows the untreated local market. Brand
+            # interventions therefore move share rather than moving numerator
+            # and denominator in lockstep.
+            market_trx = potential / base_share[hcp["specialty"]]
+            normalized = trx * ({"Commercial": 1.0, "Medicare Part D": 0.98,
+                                 "Medicaid": 0.95, "Cash": 1.02}[hcp["payer_channel"]])
+
+            plan = 2.0 + 0.68 * int(hcp["baseline_decile"])
+            if lapsed:
+                calls = 0
+                samples = 0
+            else:
+                calls = int(rng.poisson(plan * (0.94 + 0.015 * np.sin(mi / 2))))
+                samples = int(rng.poisson(max(calls * 2.2, 0.0)))
+            speaker_lambda = 1.8 if event_flags["speaker_launch_active"] else 0.12
+            attendance = 0 if lapsed else int(rng.poisson(speaker_lambda))
+
+            rows.append({
+                "account_id": hcp["account_id"],
+                "month": month,
+                "territory": hcp["territory"],
+                "district": hcp["district"],
+                "region": hcp["region"],
+                "specialty": hcp["specialty"],
+                "payer_channel": hcp["payer_channel"],
+                "trx_units": round(trx, 6),
+                "trx_dollars": round(trx * float(hcp["price_per_trx"]), 6),
+                "trx_normalized": round(normalized, 6),
+                "nrx": round(max(0.0, nrx), 6),
+                "nbrx": round(max(0.0, nbrx), 6),
+                "market_trx": round(market_trx, 6),
+                "calls": calls,
+                "call_plan": round(plan, 6),
+                "samples": samples,
+                "speaker_attendance": attendance,
+                "new_writers": int(started and mi == int(hcp["first_writer_idx"])),
+                **event_flags,
+            })
     return pd.DataFrame(rows)
 
 
-def build_source_b(a: pd.DataFrame) -> pd.DataFrame:
-    b = a.copy()
-    for col in ("revenue_gross", "revenue_net", "units", "trx_units", "trx_dollars",
-                "trx_normalized", "nrx", "nbrx", "market_trx"):
-        b[col] = b.apply(lambda x, c=col: x[c] * SOURCE_B_BIAS[x["region"]] * RNG.normal(1.0, 0.01), axis=1)
-    restate = b["month"].isin(SOURCE_B_RESTATED)
-    for col in ("revenue_gross", "revenue_net"):
-        b.loc[restate, col] = b.loc[restate, col] * 1.015
-    b = b[~b["month"].isin(MONTHS[-SOURCE_B_LAG:])]  # reporting lag
-    b = b.drop(columns=["calls", "new_cust_strict", "new_cust_broad", "samples",
-                        "speaker_attendance", "new_writers"])  # not collected externally
-    return b.round(3)
+def build_source_b(source_a: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate and project source A with exact registered pathologies."""
+    panel = source_a.groupby(list(PANEL_KEYS), as_index=False)[list(RX_COLUMNS)].sum()
+    factors = panel["region"].map(SOURCE_B_BIAS).astype(float)
+    factors = factors.where(~panel["month"].isin(SOURCE_B_RESTATED),
+                            factors * SOURCE_B_RESTATEMENT_FACTOR)
+    for column in RX_COLUMNS:
+        panel[column] = (panel[column].astype(float) * factors).round(6)
+    panel = panel[~panel["month"].isin(MONTHS[-SOURCE_B_LAG:])].reset_index(drop=True)
+    return panel
 
 
-def build_accounts(a: pd.DataFrame) -> pd.DataFrame:
-    rows = []
-    last12 = MONTHS[-12:]
-    for i in range(240):
-        r = RNG.choice(REGIONS)
-        s = RNG.choice(SEGMENTS, p=[0.25, 0.35, 0.40])
-        base = {"Enterprise": 950, "MidMarket": 380, "SMB": 110}[s] * RNG.lognormal(0, 0.5)
+def _months_since_last(mask: pd.Series) -> int:
+    active = [MONTHS.index(month) for month in mask.index[mask.astype(bool)].tolist()]
+    return len(MONTHS) if not active else len(MONTHS) - 1 - max(active)
+
+
+def build_accounts(source_a: pd.DataFrame, universe: pd.DataFrame) -> pd.DataFrame:
+    """Derive the current HCP universe from the same account-month fact."""
+    recent12 = set(MONTHS[-12:])
+    recent3 = set(MONTHS[-3:])
+    rows: list[dict] = []
+    names = universe.set_index("account_id")["name"].to_dict()
+    for account_id, group in source_a.groupby("account_id", sort=True):
+        group = group.sort_values("month")
+        static = group.iloc[0]
+        ttm = group[group["month"].isin(recent12)]
+        q90 = group[group["month"].isin(recent3)]
+        by_month = group.set_index("month")
+        activity = ((by_month["calls"] > 0) | (by_month["samples"] > 0)
+                    | (by_month["speaker_attendance"] > 0))
         rows.append({
-            "account_id": f"A{i+1:04d}",
-            "name": f"Dr. Morgan {i+1:03d}",
-            "region": r, "segment": s,
-            "district": f"{r} District {'1' if s == 'Enterprise' else '2'}",
-            "territory": f"{r[:1]}-{s[:2].upper()}-A",
-            "specialty": SPECIALTY[s],
-            "payer_channel": PAYER[(s, "Direct")],
-            "revenue_ttm": round(base, 1),
-            "revenue_prev_ttm": round(base * RNG.normal(0.97, 0.12), 1),
-            "trx_ttm": round(base * 8.5, 1),
-            "calls_90d": int(max(0, RNG.normal(7, 5))),
-            "months_since_activity": int(RNG.choice(range(0, 9), p=[.32, .2, .14, .1, .08, .06, .05, .03, .02])),
+            "account_id": account_id,
+            "name": names[account_id],
+            "territory": static["territory"],
+            "district": static["district"],
+            "region": static["region"],
+            "specialty": static["specialty"],
+            "payer_channel": static["payer_channel"],
+            "trx_ttm": round(float(ttm["trx_units"].sum()), 3),
+            "nrx_ttm": round(float(ttm["nrx"].sum()), 3),
+            "nbrx_ttm": round(float(ttm["nbrx"].sum()), 3),
+            "months_since_rx": _months_since_last(by_month["trx_units"] > 0),
+            "months_since_activity": _months_since_last(activity),
+            "calls_90d": int(q90["calls"].sum()),
+            "call_plan_90d": round(float(q90["call_plan"].sum()), 3),
         })
-    df = pd.DataFrame(rows)
-    df["months_since_rx"] = df["months_since_activity"]
-    df["decile"] = pd.qcut(df["revenue_ttm"], 10, labels=False) + 1
-    df["_l12"] = ",".join(last12)
-    return df
+    accounts = pd.DataFrame(rows)
+    accounts["decile"] = pd.qcut(accounts["trx_ttm"].rank(method="first"), 10,
+                                  labels=False) + 1
+    return accounts
 
 
-def main():
-    a = build_fact()
-    b = build_source_b(a)
-    accounts = build_accounts(a)
-    a.to_csv(HERE / "fact_source_a.csv", index=False)
-    b.to_csv(HERE / "fact_source_b.csv", index=False)
-    accounts.drop(columns=["_l12"]).to_csv(HERE / "accounts.csv", index=False)
+def build_demo(seed: int = SEED) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    rng = np.random.default_rng(seed)
+    universe = build_universe(rng)
+    source_a = build_fact(universe, rng)
+    source_b = build_source_b(source_a)
+    accounts = build_accounts(source_a, universe)
+    return source_a, source_b, accounts
 
-    h = hashlib.sha256()
-    for path in (HERE / "accounts.csv", HERE / "fact_source_a.csv", HERE / "fact_source_b.csv"):
-        h.update(path.read_bytes())
-    version = h.hexdigest()[:12]
-    gt = {
+
+def _ground_truth(version: str) -> dict:
+    return {
         "data_version": version,
+        "seed": SEED,
         "months": MONTHS,
-        "events": {
-            "speaker_launch": {"start": EAST_PROGRAM_START, "scope": {"region": "East"},
-                               "true_effect_pct": EAST_LIFT, "metrics": ["trx", "nrx", "nbrx"],
-                               "mechanism": "multiplicative regional prescription lift"},
-            "formulary_win": {"start": FORMULARY_START, "scope": {"region": "South"},
-                              "true_effect_pct": FORMULARY_LIFT, "metrics": ["trx", "nrx"],
-                              "mechanism": "lift on South partner/payer-channel volume"},
-            "competitor_launch": {"start": WEST_SHOCK_START,
-                                  "scope": {"region": "West", "specialty": "Cardiology"},
-                                  "true_effect_pct": WEST_SHOCK, "metrics": ["trx", "nrx", "nbrx"],
-                                  "mechanism": "multiplicative West/Cardiology shock"},
-            "east_program": {"start": EAST_PROGRAM_START, "scope": {"region": "East"},
-                             "true_effect_pct": EAST_LIFT, "metrics": ["revenue", "units"],
-                             "mechanism": "multiplicative lift on all East cells"},
-            "west_shock": {"start": WEST_SHOCK_START, "scope": {"region": "West", "segment": "Enterprise"},
-                           "true_effect_pct": WEST_SHOCK, "metrics": ["revenue"],
-                           "mechanism": "multiplicative shock on West/Enterprise cells"},
+        "grain": {
+            "source_a": ["account_id", "month"],
+            "source_b": list(PANEL_KEYS),
+            "accounts": ["account_id"],
         },
-        "source_b_issues": {"bias_by_region": SOURCE_B_BIAS, "lag_months": SOURCE_B_LAG,
-                            "restated_months": SOURCE_B_RESTATED, "restatement_factor": 1.015},
-        "variant_definitions": {"revenue": {"net": "gross * (1 - segment discount)", "discounts": DISCOUNT},
-                                "trx": {"units": "total prescriptions", "dollars": "gross prescription value",
-                                        "normalized": "pack-size normalized equivalent units"},
-                                "trx_share": {"numerator": "brand TRx units", "denominator": "market TRx units"},
-                                "new_customers": {"strict": "first purchase ever",
-                                                  "broad": "strict + reactivated lapsed accounts"}},
+        "events": {
+            "speaker_launch": {
+                "start": SPEAKER_START,
+                "scope": {"territory": list(SPEAKER_TERRITORIES)},
+                "control_scope": {"territory": list(SPEAKER_CONTROLS)},
+                "true_effect_pct": SPEAKER_LIFT,
+                "metrics": ["trx", "nrx", "nbrx"],
+                "treatment_flag": "speaker_launch_active",
+            },
+            "formulary_win": {
+                "start": FORMULARY_START,
+                "scope": {"region": "South", "payer_channel": "Medicare Part D"},
+                "control_scope": {"region": ["North", "East"],
+                                  "payer_channel": "Medicare Part D"},
+                "true_effect_pct": FORMULARY_LIFT,
+                "metrics": ["trx", "nrx"],
+                "treatment_flag": "formulary_win_active",
+            },
+            "competitor_launch": {
+                "start": COMPETITOR_START,
+                "scope": {"region": "West", "specialty": "Cardiology"},
+                "control_scope": {"region": ["North", "South", "East"],
+                                  "specialty": "Cardiology"},
+                "true_effect_pct": COMPETITOR_SHOCK,
+                "metrics": ["trx", "nrx", "nbrx"],
+                "treatment_flag": "competitor_launch_active",
+            },
+        },
+        "source_b_issues": {
+            "bias_by_region": SOURCE_B_BIAS,
+            "lag_months": SOURCE_B_LAG,
+            "restated_months": list(SOURCE_B_RESTATED),
+            "restatement_factor": SOURCE_B_RESTATEMENT_FACTOR,
+            "affected_columns": list(RX_COLUMNS),
+        },
+        "variant_definitions": {
+            "trx": {"units": "total prescriptions",
+                    "dollars": "gross prescription value",
+                    "normalized": "payer-channel normalized equivalent units"},
+            "trx_share": {"numerator": "brand TRx units",
+                          "denominator": "total market TRx units"},
+            "call_attainment": {"numerator": "details delivered",
+                                "denominator": "call plan"},
+        },
+        "invariants": ["nbrx <= nrx <= trx_units", "market_trx >= trx_units",
+                       "one source_a row per account_id/month",
+                       "accounts are derived from source_a"],
     }
-    (HERE / "ground_truth.json").write_text(json.dumps(gt, indent=2))
-    print(f"data written; version={version}; rows a={len(a)} b={len(b)} accounts={len(accounts)}")
+
+
+def main() -> None:
+    source_a, source_b, accounts = build_demo(SEED)
+    source_a.to_csv(HERE / "fact_source_a.csv", index=False, encoding="utf-8",
+                    lineterminator="\n")
+    source_b.to_csv(HERE / "fact_source_b.csv", index=False, encoding="utf-8",
+                    lineterminator="\n")
+    accounts.to_csv(HERE / "accounts.csv", index=False, encoding="utf-8",
+                    lineterminator="\n")
+
+    digest = hashlib.sha256()
+    for path in (HERE / "accounts.csv", HERE / "fact_source_a.csv",
+                 HERE / "fact_source_b.csv"):
+        digest.update(path.read_bytes())
+    version = digest.hexdigest()[:12]
+    (HERE / "ground_truth.json").write_text(
+        json.dumps(_ground_truth(version), indent=2) + "\n", encoding="utf-8")
+    print(f"data written; version={version}; rows a={len(source_a)} "
+          f"b={len(source_b)} accounts={len(accounts)}")
 
 
 if __name__ == "__main__":

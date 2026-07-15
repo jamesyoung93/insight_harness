@@ -87,13 +87,21 @@ def render() -> None:
     st.divider()
     st.markdown("**Correction record** — answers users flagged, reviewed against the "
                 "governed definitions")
+    st.caption("Votes are anonymous session-deduplicated feedback telemetry, not an "
+               "authenticated quality measure.")
     fb = services.feedback_history()
     votes = fb[fb["verdict"].isin(["correct", "wrong"])] if len(fb) else fb
     if len(votes):
         st.metric("Correction rate", f"{(votes['verdict']=='wrong').mean()*100:.1f}%",
                   help="Share of feedback that flagged an answer as wrong. Its trend "
                        "across runs is charted above.")
-        st.dataframe(fb.tail(20), width="stretch", hide_index=True)
+        st.caption(f"{len(votes)} correctness vote(s) recorded. Raw question text is never "
+                   "shown on this public page.")
+        safe_columns = [column for column in (
+            "ts", "question_hash", "class", "tier", "engine", "result_hash",
+            "data_version", "verdict",
+        ) if column in fb.columns]
+        st.dataframe(fb[safe_columns].tail(20), width="stretch", hide_index=True)
     else:
         st.info("No feedback yet. Use 👍 / 🚩 on any answer to build the record.")
 

@@ -6,7 +6,7 @@ layout state is written to shared files or module globals.
 """
 from __future__ import annotations
 
-from collections.abc import Iterable, MutableMapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 
@@ -17,18 +17,44 @@ SESSION_LAYOUTS_KEY = "_insight_harness_persona_layouts"
 
 
 @dataclass(frozen=True)
+class FrozenScope(Mapping[str, tiles.FilterValue]):
+    """Hashable immutable mapping used by persona and digest defaults."""
+
+    _items: tiles.FilterItems = ()
+
+    def __init__(self, value: Mapping | tiles.FilterItems | None = None) -> None:
+        object.__setattr__(self, "_items", tiles.require_valid_scope(value))
+
+    def __getitem__(self, key: str) -> tiles.FilterValue:
+        return dict(self._items)[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return (dimension for dimension, _ in self._items)
+
+    def __len__(self) -> int:
+        return len(self._items)
+
+    def __hash__(self) -> int:
+        return hash(self._items)
+
+
+@dataclass(frozen=True)
 class PersonaDefinition:
     """A validated, immutable bundle of persona defaults."""
 
     id: str
     label: str
     default_tile_ids: tuple[str, ...]
-    default_scope: str
+    default_scope: FrozenScope
     default_window: str
     default_basis: str
-    digest_scope: str
+    digest_scope: FrozenScope
 
     def __post_init__(self) -> None:
+        if not isinstance(self.default_scope, FrozenScope):
+            object.__setattr__(self, "default_scope", FrozenScope(self.default_scope))
+        if not isinstance(self.digest_scope, FrozenScope):
+            object.__setattr__(self, "digest_scope", FrozenScope(self.digest_scope))
         if not self.id or not self.label:
             raise ValueError("persona id and label are required")
         if not self.default_tile_ids:
@@ -39,12 +65,10 @@ class PersonaDefinition:
                    if tile_id not in tiles.TILES_BY_ID]
         if unknown:
             raise ValueError(f"persona {self.id!r} references unknown tiles: {unknown!r}")
-        if self.default_scope not in tiles.region_options():
-            raise ValueError(f"persona {self.id!r} has unknown default scope: "
-                             f"{self.default_scope!r}")
-        if self.digest_scope not in tiles.region_options():
-            raise ValueError(f"persona {self.id!r} has unknown digest scope: "
-                             f"{self.digest_scope!r}")
+        if tiles.scope_errors(self.default_scope):
+            raise ValueError(f"persona {self.id!r} has unknown default scope")
+        if tiles.scope_errors(self.digest_scope):
+            raise ValueError(f"persona {self.id!r} has unknown digest scope")
         if self.default_window not in tiles.WINDOW_CONTROLS:
             raise ValueError(f"persona {self.id!r} has unknown window: "
                              f"{self.default_window!r}")
@@ -53,51 +77,63 @@ class PersonaDefinition:
                              f"{self.default_basis!r}")
 
 
+def _first_scope(dimension: str) -> FrozenScope:
+    values = tiles.dimension_values(dimension)
+    if not values:
+        raise ValueError(f"persona scope dimension {dimension!r} has no registered values")
+    return FrozenScope({dimension: values[0]})
+
+
+_NATIONAL = FrozenScope()
+_REP_SCOPE = _first_scope("territory")
+_DM_SCOPE = _first_scope("district")
+
+
 PERSONAS = (
     PersonaDefinition(
         "sales_rep",
         "Sales Rep",
-        ("trx", "calls", "new_writers", "samples"),
-        "West",
+        ("trx", "call_attainment", "calls", "whitespace_hcps", "samples"),
+        _REP_SCOPE,
         "R3M",
         "MoM",
-        "West",
+        _REP_SCOPE,
     ),
     PersonaDefinition(
         "district_manager",
         "District Manager",
-        ("trx", "nrx", "calls", "new_writers", "samples"),
-        "West",
+        ("trx", "nrx", "call_attainment", "payer_mix", "new_writers"),
+        _DM_SCOPE,
         "R3M",
         "MoM",
-        "West",
+        _DM_SCOPE,
     ),
     PersonaDefinition(
         "brand_marketing",
         "Brand Marketing",
         ("trx", "nrx", "nbrx", "trx_share", "new_writers"),
-        tiles.ALL_REGIONS,
+        _NATIONAL,
         "R6M",
         "YoY",
-        tiles.ALL_REGIONS,
+        _NATIONAL,
     ),
     PersonaDefinition(
         "market_access",
         "Market Access",
-        ("trx_share", "commercial_trx", "trx"),
-        tiles.ALL_REGIONS,
+        ("trx_share", "payer_mix", "commercial_trx", "trx"),
+        _NATIONAL,
         "R6M",
         "YoY",
-        tiles.ALL_REGIONS,
+        _NATIONAL,
     ),
     PersonaDefinition(
         "executive",
         "Executive",
         ("trx", "trx_share", "nbrx", "new_writers", "commercial_trx"),
-        tiles.ALL_REGIONS,
+        _NATIONAL,
         "R12M",
         "YoY",
-        tiles.ALL_REGIONS,
+        _NATIONAL,
     ),
 )
 PERSONAS_BY_ID = MappingProxyType({persona.id: persona for persona in PERSONAS})

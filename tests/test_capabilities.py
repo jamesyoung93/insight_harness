@@ -1,338 +1,331 @@
-"""Capability tests: time windows, multi-value filters, comparison bases,
-watchlists, governance configuration, run history, and translator polish."""
+"""Pharma windows, dimensions, ratios, sources, causal scopes, and governance."""
 import json
 
+import pandas as pd
 import pytest
 
 from harness import pipeline, services, triage
 from harness import semantic_layer as sl
 from harness.llm_translator import TranslationError, _validate
+from harness.engines import decomposition
 
 
-# --------------------------------------------------------------------------- #
-# Time windows
-# --------------------------------------------------------------------------- #
-def test_quarter_window_aggregates_and_discloses():
-    art = pipeline.answer("What was revenue in Q1 2026 in the West region?")
-    assert "Q1 2026" in art.headline
-    df = sl.apply_filters(sl.load_fact("source_a"), {"region": "West"})
-    expected = float(df[df["month"].isin(["2026-01", "2026-02", "2026-03"])]
-                     [sl.column_for("revenue", sl.default_variant("revenue"))].sum())
-    assert abs(art.value - expected) < 1e-6
+def _raw(**overrides):
+    payload = {
+        "question_class": "Descriptive", "metric": "trx", "filters": {},
+        "trend": False, "dim_breakdown": None, "event_id": None,
+        "template": None, "window": None, "compare_basis": None, "reason": "",
+    }
+    payload.update(overrides)
+    return json.dumps(payload)
 
 
-def test_last_n_window_restricts_trend():
-    art = pipeline.answer("Trend revenue last 6 months")
-    assert art.chart_df["month"].tolist() == sl.months()[-6:]
-    assert "last 6 months" in art.headline
+def test_quarter_window_aggregates_raw_trx():
+    artifact = pipeline.answer("What was TRx in Q1 2026 in the West region?")
+    frame = sl.load_fact("source_a")
+    expected = frame[(frame["region"] == "West")
+                     & frame["month"].isin(["2026-01", "2026-02", "2026-03"])]["trx_units"].sum()
+    assert artifact.value == pytest.approx(expected)
+    assert "Q1 2026" in artifact.headline
 
 
-def test_out_of_range_window_is_a_scoped_refusal():
-    art = pipeline.answer("What was revenue in Q1 2023?")
-    assert art.tier == "Abstained"
-    assert "outside that range" in art.headline
-    art = pipeline.answer("What was revenue in March 2023 in the East?")
-    assert art.tier == "Abstained"
+def test_trend_window_and_yoy_reference_are_structured():
+    artifact = pipeline.answer("Trend TRx last 6 months vs same month last year")
+    assert artifact.chart_df["month"].tolist() == sl.months()[-6:]
+    comparison = artifact.extras["comparison"]
+    assert comparison["basis"] == "yoy" and comparison["available"] is True
+    assert comparison["reference_month"] == "2025-06"
 
 
-def test_window_reclamps_against_the_resolved_source():
-    """A window valid on the default calendar may be uncovered on an
-    overridden source — refuse or disclose, never report a wrong number."""
-    # June 2026 doesn't exist on the lagged panel feed: scoped refusal
-    art = pipeline.answer("What was revenue in June 2026?", source="source_b")
-    assert art.tier == "Abstained"
-    assert "External panel feed" in art.headline
-    # Q2 2026 is partially covered there: clamped and disclosed
-    art = pipeline.answer("What was revenue in Q2 2026?", source="source_b")
-    assert art.tier == "Verified"
-    assert "partial" in art.headline
-    assert any("clamped" in c for c in art.caveats)
-    # trend flavor of the same refusal must not crash either
-    art = pipeline.answer("Trend revenue by month for June 2026", source="source_b")
-    assert art.tier == "Abstained"
+def test_lagged_source_refuses_uncovered_month_and_discloses_partial_quarter():
+    refused = pipeline.answer("What was TRx in June 2026?", source="source_b")
+    assert refused.tier == "Abstained"
+    assert "Projected retail panel" in refused.headline
+    partial = pipeline.answer("What was TRx in Q2 2026?", source="source_b")
+    assert partial.tier == "Verified" and "partial" in partial.headline
+    assert any("clamped" in caveat for caveat in partial.caveats)
 
 
-def test_fully_pinned_scope_decomposes_to_total_only():
-    q = "Which segments account for the revenue change in West and Enterprise and Direct?"
-    art = pipeline.answer(q)
-    assert art.tier == "Verified" and art.engine == "decomposition"
-    assert art.extras["tables"] == {}
-    assert "no finer breakdown" in art.extras["note"]
-
-
-def test_window_plus_basis_is_computed_or_disclosed():
-    # single-month window: the comparison is computed against the shifted month
-    art = pipeline.answer("What was revenue in May 2026 vs prior month?")
-    assert "vs prior month" in art.headline
-    # multi-month window: the comparison is omitted with a computed caveat
-    art = pipeline.answer("What was revenue in Q1 2026 vs prior month?")
-    assert any("comparison is omitted" in c for c in art.caveats)
-
-
-def test_anomaly_feed_follows_governed_default_variant():
-    base = services.anomaly_feed(1.5)
-    sl.set_governance(default_variants={"revenue": "gross"})
-    changed = services.anomaly_feed(1.5)
-    rev_base = base[base["metric"] == "Revenue"]["latest"].sum()
-    rev_changed = changed[changed["metric"] == "Revenue"]["latest"].sum()
-    if len(base[base["metric"] == "Revenue"]) and len(changed[changed["metric"] == "Revenue"]):
-        assert rev_changed != rev_base  # gross ≠ net
-
-
-def test_llm_refusal_reason_is_never_model_authored():
-    raw = _raw(question_class="Predictive", metric=None,
-               reason="Based on the trend, revenue will likely reach 999 next quarter.")
-    intent, meta = _validate("Forecast revenue", raw)
-    assert "999" not in intent.reason  # the model's guess is not rendered
-    assert intent.reason == triage.refusal_reason(triage.PREDICTIVE)
-    assert "999" in meta["model_reason"]  # but it stays auditable
-
-
-def test_oversized_last_n_clamps_with_disclosure():
-    n_avail = len(sl.months())
-    art = pipeline.answer(f"Trend revenue last {n_avail + 10} months")
-    assert art.chart_df["month"].tolist() == sl.months()
-    assert "available" in art.headline
-
-
-def test_partial_quarter_disclosed():
-    # data ends 2026-06, so Q3 2026 has no months; Q3 2024 starts mid-quarter
-    w, refusal = triage.resolve_window({"kind": "quarter", "q": 3, "year": 2024})
-    assert refusal is None and w.months == ["2024-07", "2024-08", "2024-09"]
-    w, refusal = triage.resolve_window({"kind": "quarter", "q": 3, "year": 2026})
-    assert w is None and "outside that range" in refusal
-
-
-# --------------------------------------------------------------------------- #
-# Multi-value filters
-# --------------------------------------------------------------------------- #
-def test_multi_value_filter_parses_and_computes():
-    intent = triage.parse("What is revenue in the East and West regions?")
-    assert intent.filters == {"region": ["East", "West"]}
-    art = pipeline.answer_intent(intent)
-    df = sl.load_fact("source_a")
-    latest = sorted(df["month"].unique())[-1]
-    expected = float(df[(df["region"].isin(["East", "West"])) & (df["month"] == latest)]
-                     [sl.column_for("revenue", sl.default_variant("revenue"))].sum())
-    assert abs(art.value - expected) < 1e-6
-    assert "region in [East, West]" in art.headline
-
-
-def test_multi_value_filtered_dim_stays_available_for_breakdown():
-    art = pipeline.answer("Which regions account for the revenue change in the East and West regions?")
-    assert "region" in art.extras["tables"]
-    assert set(art.extras["tables"]["region"]["value"]) == {"East", "West"}
-
-
-# --------------------------------------------------------------------------- #
-# Comparison basis
-# --------------------------------------------------------------------------- #
-def test_basis_parses_and_sets_window_months():
-    art = pipeline.answer("Which segments account for the revenue change vs prior month?")
-    ms = sl.months()
-    assert ms.index(art.extras["m1"]) - ms.index(art.extras["m0"]) == 1
-    assert "vs prior month" in art.headline
-
-
-def test_basis_override_via_pipeline_param():
-    art = pipeline.answer("Which segments account for the revenue change?", basis="yoy")
-    ms = sl.months()
-    assert ms.index(art.extras["m1"]) - ms.index(art.extras["m0"]) == 12
-
-
-def test_descriptive_basis_appends_comparison():
-    art = pipeline.answer("What is revenue in the West region vs last year?")
-    assert "vs same month last year" in art.headline
-
-
-def test_trend_yoy_emits_aligned_reference_and_latest_comparison():
-    art = pipeline.answer("Trend revenue last 6 months vs same month last year")
-    current_col = sl.METRICS["revenue"]["variants"][sl.default_variant("revenue")]["label"]
-    reference_cols = [c for c in art.chart_df.columns if c not in ("month", current_col)]
-    assert len(reference_cols) == 1
-    reference_col = reference_cols[0]
-
-    df = sl.load_fact("source_a")
-    value_col = sl.column_for("revenue", sl.default_variant("revenue"))
-    monthly = df.groupby("month")[value_col].sum()
-    months = sl.months()
-    for row in art.chart_df.itertuples(index=False, name=None):
-        month, current, reference = row
-        reference_month = months[months.index(month) - 12]
-        assert current == pytest.approx(float(monthly[month]))
-        assert reference == pytest.approx(float(monthly[reference_month]))
-
-    comparison = art.extras["comparison"]
-    latest_month = art.chart_df.iloc[-1]["month"]
-    reference_month = months[months.index(latest_month) - 12]
-    assert comparison["basis"] == "yoy"
-    assert comparison["basis_label"] == "vs same month last year"
-    assert comparison["available"] is True
-    assert comparison["current_month"] == latest_month
-    assert comparison["reference_month"] == reference_month
-    assert comparison["current_value"] == pytest.approx(float(monthly[latest_month]))
-    assert comparison["reference_value"] == pytest.approx(float(monthly[reference_month]))
-    assert comparison["delta"] == pytest.approx(
-        float(monthly[latest_month] - monthly[reference_month]))
-    assert comparison["delta_pct"] == pytest.approx(
-        float((monthly[latest_month] - monthly[reference_month])
-              / monthly[reference_month]))
-
-
-@pytest.mark.parametrize("phrase,basis,steps", [
-    ("vs prior month", "prior_month", 1),
-    ("vs prior quarter", "prior_quarter", 3),
-    ("vs same month last year", "yoy", 12),
+@pytest.mark.parametrize("question", [
+    "What is TRx in E-CAR-01 and Endocrinology?",
+    "Trend TRx in E-CAR-01 and Endocrinology",
+    "Which payer channels account for the TRx change in E-CAR-01 and Endocrinology?",
 ])
-def test_descriptive_point_exposes_structured_comparison(phrase, basis, steps):
-    art = pipeline.answer(f"What was revenue in May 2026 {phrase}?")
-    comparison = art.extras["comparison"]
-    months = sl.months()
-    reference_month = months[months.index("2026-05") - steps]
-    df = sl.load_fact("source_a")
-    col = sl.column_for("revenue", sl.default_variant("revenue"))
-    monthly = df.groupby("month")[col].sum()
-
-    assert comparison["basis"] == basis
-    assert comparison["available"] is True
-    assert comparison["current_month"] == "2026-05"
-    assert comparison["current_value"] == pytest.approx(art.value)
-    assert comparison["reference_month"] == reference_month
-    assert comparison["reference_value"] == pytest.approx(float(monthly[reference_month]))
-    assert comparison["delta"] == pytest.approx(
-        comparison["current_value"] - comparison["reference_value"])
-    assert comparison["delta_pct"] == pytest.approx(
-        comparison["delta"] / comparison["reference_value"])
+def test_structurally_empty_scopes_abstain_without_crashing(question):
+    artifact = pipeline.answer(question)
+    assert artifact.tier == "Abstained"
+    assert "no governed observations" in artifact.headline
 
 
-def test_trend_comparison_discloses_insufficient_reference_history():
-    art = pipeline.answer("Trend revenue by month in Q1 2025 vs same month last year")
-    reference_cols = [c for c in art.chart_df.columns if c not in ("month", "Net revenue")]
-    assert len(reference_cols) == 1
-    assert art.chart_df[reference_cols[0]].isna().all()
-    comparison = art.extras["comparison"]
-    assert comparison["basis"] == "yoy"
-    assert comparison["current_month"] == "2025-03"
-    assert comparison["available"] is False
-    assert comparison["reference_month"] is None
-    assert comparison["reference_value"] is None
-    assert any("predates the available history" in caveat
-               and "latest-point comparison is unavailable" in caveat
-               for caveat in art.caveats)
+def test_market_share_is_weighted_ratio_and_formatted_as_percent():
+    artifact = pipeline.answer("What is TRx market share in West Cardiology?")
+    frame = sl.load_fact("source_a")
+    current = frame[(frame["month"] == frame["month"].max())
+                    & (frame["region"] == "West")
+                    & (frame["specialty"] == "Cardiology")]
+    expected = current["trx_units"].sum() / current["market_trx"].sum()
+    assert artifact.value == pytest.approx(expected)
+    assert f"{expected * 100:.1f}%" in artifact.headline
+    assert "aggregate_metric" in artifact.code
 
 
-# --------------------------------------------------------------------------- #
-# LLM translation contract for the new capabilities
-# --------------------------------------------------------------------------- #
-def _raw(**kw):
-    base = {"question_class": "Descriptive", "metric": "revenue", "filters": {},
-            "trend": False, "event_id": None, "template": None, "reason": ""}
-    base.update(kw)
-    return json.dumps(base)
+def test_call_attainment_is_ratio_of_sums_not_sum_of_row_ratios():
+    artifact = pipeline.answer("What is call-plan attainment in the East region?")
+    frame = sl.load_fact("source_a")
+    current = frame[(frame["month"] == frame["month"].max())
+                    & (frame["region"] == "East")]
+    expected = current["calls"].sum() / current["call_plan"].sum()
+    assert artifact.value == pytest.approx(expected)
+    assert "%" in artifact.headline
 
 
-def test_llm_window_validated_and_resolved():
-    intent, _ = _validate("q", _raw(window={"kind": "quarter", "q": 1, "year": 2026}))
-    assert intent.window.months == ["2026-01", "2026-02", "2026-03"]
+def test_zero_ratio_denominator_is_undefined_not_zero():
+    frame = pd.DataFrame({"calls": [0, 0], "call_plan": [0, 0]})
+    value = sl.aggregate_metric(frame, "call_attainment", "actual_plan")
+    assert pd.isna(value)
 
 
-def test_llm_out_of_range_window_becomes_refusal_not_error():
-    intent, meta = _validate("q", _raw(window={"kind": "quarter", "q": 1, "year": 2023}))
-    assert intent.question_class == triage.OUT_OF_SCOPE
-    assert meta["translator"] == "llm"
+def test_ratio_comparison_reports_percentage_points():
+    artifact = pipeline.answer("What was TRx market share in May 2026 vs prior month?")
+    comparison = artifact.extras["comparison"]
+    assert comparison["delta_pp"] == pytest.approx(comparison["delta"] * 100)
+    assert " pp " in artifact.headline
 
 
-def test_llm_invalid_window_and_basis_rejected():
-    with pytest.raises(TranslationError) as e:
-        _validate("q", _raw(window={"kind": "fortnight"}))
-    assert e.value.kind == "rejected"
-    with pytest.raises(TranslationError) as e:
-        _validate("q", _raw(compare_basis="vs_vibes"))
-    assert e.value.kind == "rejected"
+def test_ratio_decomposition_is_a_scoped_refusal():
+    artifact = pipeline.answer("Which specialties account for the TRx market share change?")
+    assert artifact.tier == "Abstained"
+    assert "ratio metric" in artifact.headline
 
 
-def test_llm_array_filters_validated():
-    intent, _ = _validate("q", _raw(filters={"region": ["West", "East"]}))
-    assert intent.filters == {"region": ["East", "West"]}  # sorted, deterministic
+@pytest.mark.parametrize("phrase,dimension", [
+    ("Which payer channels account for the NRx change?", "payer_channel"),
+    ("Which specialties account for the TRx change?", "specialty"),
+    ("Which territories account for the TRx change?", "territory"),
+    ("Which districts account for the TRx change?", "district"),
+    ("Which regions account for the TRx change?", "region"),
+])
+def test_named_breakdown_dimension_is_parsed_and_honored(phrase, dimension):
+    intent = triage.parse(phrase)
+    assert intent.dim_breakdown == dimension
+    artifact = pipeline.answer_intent(intent)
+    assert set(artifact.extras["tables"]) == {dimension}
+    assert set(artifact.table["dimension"]) == {dimension}
+
+
+def test_post_filter_cardinality_removes_fully_pinned_breakdown():
+    intent = triage.Intent("q", triage.DIAGNOSTIC, "trx",
+                           {"payer_channel": "Commercial"},
+                           dim_breakdown="payer_channel")
+    artifact = pipeline.answer_intent(intent)
+    assert artifact.extras["tables"] == {}
+    assert "no finer breakdown" in artifact.extras["note"]
+
+
+def test_multi_value_pharma_filter_is_deterministic():
+    intent = triage.parse("What is TRx in the East and West regions?")
+    assert intent.filters == {"region": ["East", "West"]}
+    artifact = pipeline.answer_intent(intent)
+    assert "region in [East, West]" in artifact.headline
+
+
+def test_source_divergence_uses_common_window_and_separates_coverage():
+    artifact = pipeline.answer("What was TRx in Q2 2026?")
+    source_fork = next(fork for fork in artifact.divergence
+                       if fork["fork"] == "source: source_b")
+    assert source_fork["common_window"] == ["2026-04", "2026-05"]
+    assert abs(source_fork["rel_diff"]) < 0.05  # projection bias, not a missing-month -33%
+    assert artifact.extras["coverage_gaps"]
+    assert any("common period" in caveat for caveat in artifact.caveats)
+
+
+def test_diagnostic_missing_source_anchor_abstains_and_partial_window_is_explicit():
+    missing = pipeline.answer(
+        "Which regions account for the TRx change in June 2026?", source="source_b")
+    assert missing.tier == "Abstained"
+    assert missing.extras["requested_window"] == ["2026-06"]
+    assert missing.extras["effective_window"] == []
+
+    partial = pipeline.answer(
+        "Which regions account for the TRx change in Q2 2026?", source="source_b")
+    assert partial.tier == "Verified"
+    assert partial.extras["requested_window"] == ["2026-04", "2026-05", "2026-06"]
+    assert partial.extras["effective_window"] == ["2026-04", "2026-05"]
+    assert "effective source window" in partial.headline
+    assert any("does not cover the full requested window" in text for text in partial.caveats)
+
+
+def test_decomposition_zero_denominators_are_explicitly_undefined(monkeypatch):
+    rows = []
+    for month, east, west in (("2026-01", 0, 0), ("2026-02", 1, 0)):
+        for region, value in (("East", east), ("West", west)):
+            rows.append({"month": month, "region": region, "territory": f"{region}-01",
+                         "district": f"{region} District", "specialty": "Cardiology",
+                         "payer_channel": "Commercial", "new_writers": value})
+    frame = pd.DataFrame(rows)
+    monkeypatch.setattr(sl, "load_fact", lambda source: frame)
+    intent = triage.Intent(
+        "Which regions account for the new writers change in February 2026?",
+        triage.DIAGNOSTIC, "new_writers", dim_breakdown="region",
+        window=triage.Window("month", ["2026-02"], "2026-02"),
+        compare_basis="prior_month")
+    artifact = decomposition.decompose(intent, sl.resolve("new_writers"))
+    assert "percentage change unavailable: zero baseline" in artifact.headline
+
+    frame.loc[frame["month"] == "2026-01", "new_writers"] = [1, 1]
+    frame.loc[frame["month"] == "2026-02", "new_writers"] = [2, 0]
+    offsetting = decomposition.decompose(intent, sl.resolve("new_writers"))
+    assert "movements offset" in offsetting.headline
+    assert offsetting.table["share_of_change"].isna().all()
+
+
+def test_ratio_watch_and_anomaly_feeds_never_sum_ratios():
+    feed = services.watch_feed([{"metric": "call_attainment", "filters": {"region": "West"}}])
+    assert len(feed) == 1 and 0 <= feed.iloc[0]["latest"] <= 2
+    anomalies = services.anomaly_feed(0.0)
+    assert set(anomalies["metric_id"]).issubset(sl.METRICS)
+    assert not ({"revenue", "units", "new_customers"} & set(anomalies["metric_id"]))
+    assert anomalies["impact_score"].between(0, 1).all()
+    assert anomalies["impact_score"].is_monotonic_decreasing
+    ratios = anomalies[anomalies["metric_id"].isin(["trx_share", "call_attainment"])]
+    assert len(ratios) and (ratios["value_format"] == "percent").all()
+
+
+def test_watch_empty_scope_is_no_data_not_false_zero():
+    feed = services.watch_feed([{"metric": "trx", "filters": {"region": "Atlantis"}}])
+    assert len(feed) == 1
+    assert feed.iloc[0]["status"] == "no_data"
+    assert pd.isna(feed.iloc[0]["latest"])
+
+
+def test_panel_caveats_include_registered_restatement_limitation():
+    artifact = pipeline.answer("What was TRx in Q1 2025?", source="source_b")
+    assert any("restated" in caveat.lower() for caveat in artifact.caveats)
+
+
+def test_account_retrieval_ranks_requested_rx_metric_with_truthful_provenance():
+    nrx = pipeline.answer("Top 15 accounts by NRx")
+    assert nrx.tier == "Verified"
+    assert nrx.table["nrx_ttm"].is_monotonic_decreasing
+    assert (nrx.resolution.metric, nrx.resolution.source, nrx.resolution.variant) == (
+        "nrx", "source_a", "units")
+
+    clamped = pipeline.answer("Top 15 accounts by TRx", source="source_b", variant="dollars")
+    assert clamped.tier == "Verified"
+    assert (clamped.resolution.source, clamped.resolution.variant) == ("source_a", "units")
+    assert "account-grain retrieval" in clamped.resolution.reason
+
+
+def test_account_retrieval_refuses_unregistered_metric_instead_of_substitution():
+    artifact = pipeline.answer("Top 15 accounts by calls")
+    assert artifact.tier == "Abstained"
+    assert "no different metric was substituted" in artifact.headline
+
+
+@pytest.mark.parametrize("question,event_id,effect", [
+    ("What was the impact of the speaker program?", "speaker_launch", 0.08),
+    ("What was the impact of the formulary win in South Medicare?", "formulary_win", 0.10),
+    ("What was the impact of the competitor launch in West Cardiology?",
+     "competitor_launch", -0.22),
+])
+def test_registered_pharma_causal_designs_use_exact_scopes(question, event_id, effect):
+    artifact = pipeline.answer(question)
+    event = sl.EVENTS[event_id]
+    assert artifact.tier == "Hypothesis"
+    assert artifact.extras["effective_scope"] == event["scope"]
+    assert artifact.extras["control_scope"] == event["control_scope"]
+    assert artifact.value == pytest.approx(effect, abs=0.02)
+    windows = artifact.extras["source_sensitivity_windows"]
+    if len(windows) > 1:
+        assert len({json.dumps(window, sort_keys=True) for window in windows.values()}) == 1
+    assert "treated_growth" in artifact.code and "control_growth" in artifact.code
+
+
+def test_causal_design_refuses_unregistered_narrowing_and_metric_substitution():
+    narrowed = pipeline.answer(
+        "What was the impact of the competitor launch in West Cardiology for Commercial?")
+    assert narrowed.tier == "Abstained"
+    assert "narrow" in narrowed.headline
+    wrong_metric = pipeline.answer("What was the impact of the speaker program on calls?")
+    assert wrong_metric.tier == "Abstained"
+    assert "no registered design" in wrong_metric.headline
+
+
+def test_llm_causal_no_metric_defaults_to_matched_event_metric():
+    raw = _raw(question_class="Causal", metric=None, event_id="formulary_win")
+    intent, _ = _validate("What was the impact of the formulary win?", raw)
+    assert intent.metric == sl.EVENTS["formulary_win"]["default_metric"] == "trx"
+
+
+def test_llm_requested_breakdown_dimension_is_validated():
+    intent, _ = _validate("q", _raw(question_class="Diagnostic",
+                                     dim_breakdown="payer_channel"))
+    assert intent.dim_breakdown == "payer_channel"
     with pytest.raises(TranslationError):
-        _validate("q", _raw(filters={"region": ["East", "Atlantis"]}))
-    with pytest.raises(TranslationError) as e:  # unhashable values must reject, not crash
-        _validate("q", _raw(filters={"region": [{"x": 1}]}))
-    assert e.value.kind == "rejected"
+        _validate("q", _raw(question_class="Diagnostic", dim_breakdown="segment"))
+    with pytest.raises(TranslationError):
+        _validate("q", _raw(question_class="Descriptive", dim_breakdown="region"))
 
 
-def test_translator_fallback_meta_without_network(monkeypatch):
-    from harness import llm_translator
-
-    def boom(*a, **kw):
-        raise TranslationError("nope", kind="rejected")
-    monkeypatch.setattr(llm_translator, "translate", boom)
-    art = pipeline.answer("What is revenue in the West region?", api_key="test-key")
-    tr = art.extras["translation"]
-    assert tr["fallback_kind"] == "rejected"
-    assert isinstance(tr["latency_ms"], int)
-    assert tr["translator"] == "rules"  # visible fallback
-
-
-# --------------------------------------------------------------------------- #
-# Watchlists
-# --------------------------------------------------------------------------- #
-def test_watchlist_add_dedupe_remove_and_feed():
-    assert services.add_watch("revenue", {"region": "West"}, "Revenue · region=West")
-    assert not services.add_watch("revenue", {"region": "West"}, "dup")
-    assert services.add_watch("calls", {}, "Sales calls · all scopes")
-    feed = services.watch_feed(services.load_watchlist(), 1.5)
-    assert len(feed) == 2
-    assert all(feed["flagged"] == (feed["z"].abs() >= 1.5))
-    services.remove_watch("revenue", {"region": "West"})  # remove by identity
-    remaining = services.load_watchlist()
-    assert len(remaining) == 1 and remaining[0]["metric"] == "calls"
+def test_llm_bounded_contract_rejects_missing_extra_and_cross_class_fields():
+    missing = json.loads(_raw())
+    missing.pop("reason")
+    with pytest.raises(TranslationError):
+        _validate("q", json.dumps(missing))
+    extra = json.loads(_raw()) | {"answer": "invented"}
+    with pytest.raises(TranslationError):
+        _validate("q", json.dumps(extra))
+    with pytest.raises(TranslationError):
+        _validate("q", _raw(question_class="Retrieval", template=None))
+    with pytest.raises(TranslationError):
+        _validate("q", _raw(question_class="Descriptive", template="whitespace"))
+    with pytest.raises(TranslationError):
+        _validate("q", _raw(event_id="speaker_launch"))
+    with pytest.raises(TranslationError):
+        _validate("q", _raw(question_class="Causal", event_id="speaker_launch",
+                             metric="calls"))
+    with pytest.raises(TranslationError):
+        _validate("q", _raw(trend="false"))
+    with pytest.raises(TranslationError):
+        _validate("q", _raw(reason={"text": "not a string"}))
 
 
-def test_stale_watch_stays_visible_and_removable():
-    services.add_watch("revenue", {"region": "West"}, "ok")
-    watches = services.load_watchlist()
-    watches.append({"metric": "retired_metric", "filters": {}, "label": "old"})
-    services.WATCHLIST_PATH.write_text(json.dumps(watches))
-    feed = services.watch_feed(services.load_watchlist(), 2.0)
-    assert len(feed) == 2  # the stale watch is visible, not silently hidden
-    services.remove_watch("retired_metric", {})
-    assert len(services.load_watchlist()) == 1
+def test_llm_filters_and_windows_are_registry_validated():
+    intent, _ = _validate("q", _raw(filters={"region": ["West", "East"]},
+                                     window={"kind": "quarter", "q": 1, "year": 2026}))
+    assert intent.filters == {"region": ["East", "West"]}
+    assert intent.window.months == ["2026-01", "2026-02", "2026-03"]
+    with pytest.raises(TranslationError):
+        _validate("q", _raw(filters={"region": "Atlantis"}))
 
 
-# --------------------------------------------------------------------------- #
-# Governance administration
-# --------------------------------------------------------------------------- #
-def test_governance_changes_apply_log_and_keep_golden_green():
-    # raising materiality makes the ~3% South source fork immaterial, while
-    # the much larger gross-vs-net variant fork rightly stays flagged
-    def source_forks(art):
-        return [d for d in art.divergence if d["fork"].startswith("source")]
-
-    art = pipeline.answer("What is revenue in the South region?")
-    assert any(d["material"] for d in source_forks(art))
-    sl.set_governance(materiality_rel=0.10)
-    art = pipeline.answer("What is revenue in the South region?")
-    assert source_forks(art) and not any(d["material"] for d in source_forks(art))
-
-    # flipping the default variant changes resolution and stays disclosed
-    sl.set_governance(default_variants={"revenue": "gross"})
-    art = pipeline.answer("What is revenue in the West region?")
-    assert art.resolution.variant == "gross"
-    assert "Gross revenue" in art.headline
-
-    # both changes are logged, and the accuracy record stays green under them
-    log = sl.governance_log()
-    assert len(log) == 2 and all("ts" in r and "change" in r for r in log)
-    res = pipeline.run_golden(record=False)
-    assert res["pass"].all() and res["reproducible"].all()
+def test_governance_write_is_atomic_and_audits_actor_before_after():
+    assert sl.set_governance(materiality_rel=0.08, actor="test-admin")
+    assert sl.CONFIG_PATH.exists()
+    record = json.loads(sl.GOVERNANCE_LOG.read_text().splitlines()[0])
+    assert record["actor"] == "test-admin"
+    assert record["before"] == {}
+    assert record["after"]["materiality_rel"] == 0.08
+    assert "_audit_history" not in record["before"]
+    assert "_audit_history" not in record["after"]
+    assert not list(sl.CONFIG_PATH.parent.glob("*.tmp"))
 
 
-def test_run_golden_records_history():
+def test_governance_embedded_audit_survives_missing_jsonl_mirror():
+    sl.set_governance(materiality_rel=0.08, actor="first-admin")
+    sl.set_governance(materiality_rel=0.09, actor="second-admin")
+    config = json.loads(sl.CONFIG_PATH.read_text(encoding="utf-8"))
+    assert len(config["_audit_history"]) == 2
+    sl.GOVERNANCE_LOG.unlink()
+    history = sl.governance_log()
+    assert [record["actor"] for record in history] == ["first-admin", "second-admin"]
+    assert len({record["change_id"] for record in history}) == 2
+
+
+def test_run_golden_history_is_recorded():
     pipeline.run_golden(record=True)
     pipeline.run_golden(record=True)
-    hist = pipeline.eval_history()
-    assert len(hist) == 2
-    assert (hist["pass_rate"] == 1.0).all()
-    assert set(hist.columns) >= {"ts", "data_version", "pass_rate",
-                                 "reproducible_rate", "correct_refusal_rate"}
+    history = pipeline.eval_history()
+    assert len(history) == 2
+    assert (history["pass_rate"] == 1.0).all()
+    assert (history["reproducible_rate"] == 1.0).all()
