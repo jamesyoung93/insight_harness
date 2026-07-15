@@ -69,7 +69,7 @@ and [secrets management](https://docs.streamlit.io/deploy/streamlit-community-cl
 
 | Page | What it does |
 |---|---|
-| **Ask** | Natural-language questions over governed metrics, with session history and replay, grouped suggestions, time windows ("last 6 months", "Q1 2026"), multi-value filters ("East and West"), user-selectable comparison basis for breakdowns, scoped refusals with clickable reframes, JSON/CSV artifact downloads, a copyable result hash, 👍/🚩 correction telemetry, and a Watch action |
+| **Home** | Five live, pipeline-backed KPI tiles with shared window, comparison, and region controls; compact provenance and material-fork disclosure; one-click breakdown/open actions; plus natural-language exploration with session history, scoped refusals, artifact downloads, correction telemetry, and Watch actions |
 | **Monitoring** | A Watched section (user-pinned metric+scope, evaluated with the same materiality logic) plus an impact-ranked anomaly feed; every row drills through to its decomposition with one click |
 | **Causal Studio** | Attribution as a review surface: registered events, difference-in-differences proposals rendered as a structured brief (design → computed assumption checks → estimate vs. naive read → variant sensitivity), and an analyst sign-off that stamps the artifact and is recorded in telemetry |
 | **Semantic Layer** | Read-only registry browsing for everyone (metrics, variants with owners, sources with known limitations) plus an admin expander that edits the materiality threshold and default variants — persisted to `data/governance_config.json`, reloaded by the layer, every change logged to `data/governance_log.jsonl` |
@@ -158,9 +158,10 @@ temp dir.
 ```
 app.py                          router + chrome
 views/
+  home.py                       governed KPI band, shared controls, tile actions
   common.py                     shared answer renderer: chips, stamp, waterfall,
                                 causal brief, refusal panel, artifact actions
-  ask.py                        home: question box, history rail, suggestions
+  ask.py                        question box, history rail, suggestions
   monitoring.py                 watched scopes + anomaly feed, drill-through
   causal_studio.py              design proposals + analyst sign-off
   registry.py                   semantic layer browser + governance admin
@@ -172,6 +173,7 @@ harness/
   triage.py                     classification + intent parsing (rule parser),
                                 windows, bases, multi-value filters
   llm_translator.py             optional LLM drop-in behind the same contract
+  tiles.py                      immutable tile registry + canonical questions
   pipeline.py                   orchestrator + golden set + run history
   provenance.py                 AnswerArtifact: code, hashes, tiers, JSON export
   services.py                   divergence, caveats, anomaly feed, watchlists,

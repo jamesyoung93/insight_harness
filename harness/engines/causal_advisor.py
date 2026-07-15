@@ -43,13 +43,14 @@ def _did(treated: pd.Series, control: pd.Series, start: str):
             "t_pre": t_pre, "t_post": t_post, "c_pre": c_pre, "c_post": c_post}
 
 
-DESIGN_METRICS = ("revenue", "units")  # metrics with registered attribution designs
+DESIGN_METRICS = ("trx", "nrx", "nbrx", "revenue", "units")
 
 
 def propose(intent: Intent, res: sl.Resolution) -> AnswerArtifact:
     ev = sl.EVENTS[intent.event_id]
     asked_metric = res.metric
-    metric = asked_metric if asked_metric in DESIGN_METRICS else "revenue"
+    registered = [m for m in ev.get("metrics", []) if m in DESIGN_METRICS]
+    metric = asked_metric if asked_metric in registered else (registered[0] if registered else "trx")
     if metric != asked_metric:
         # the design runs on a design-registered metric; the resolution must
         # describe what actually ran, and the substitution is disclosed below
@@ -134,8 +135,8 @@ def propose(intent: Intent, res: sl.Resolution) -> AnswerArtifact:
                            "the checks above.")}
     if metric != asked_metric and asked_metric in sl.METRICS:
         art.caveats.append(f"The question referenced {sl.METRICS[asked_metric]['label'].lower()}; "
-                           f"attribution designs are registered for revenue and units, so this "
-                           f"design runs on {sl.METRICS[metric]['label'].lower()}.")
+                           f"the registered event design runs on "
+                           f"{sl.METRICS[metric]['label'].lower()}.")
     if short_post:
         art.caveats.append("Short post-period: estimate will move as more months arrive.")
     return art

@@ -16,7 +16,7 @@ from pathlib import Path
 import pandas as pd
 
 from . import semantic_layer as sl
-from . import services, triage
+from . import services, tiles, triage
 from .engines import basic, causal_advisor, decomposition
 from .provenance import AnswerArtifact, TIER_ABSTAINED, _stable_hash
 
@@ -109,10 +109,9 @@ def _gt_value(metric: str, filters: dict, months: list | None = None) -> float:
     Uses the governed default variant so the set stays valid under admin
     configuration changes."""
     df = sl.apply_filters(sl.load_fact("source_a"), filters)
-    col = sl.column_for(metric, sl.default_variant(metric))
     if months is None:
         months = [df["month"].max()]
-    return float(df[df["month"].isin(months)][col].sum())
+    return sl.aggregate_metric(df[df["month"].isin(months)], metric, sl.default_variant(metric))
 
 
 def _q_months(year: int, q: int) -> list:
@@ -175,12 +174,37 @@ GOLDEN = [
     # abstentions for the new capabilities
     {"id": "G16", "question": "What was revenue in Q1 2023?", "type": "abstain"},
     {"id": "G17", "question": "What was our NPS over the last 6 months?", "type": "abstain"},
+    # tile/Ask parity: the glanceable layer must be the same artifact, not a
+    # separately implemented dashboard calculation
+    {"id": "G18", "question": "(tile) TRx · Latest · MoM", "type": "tile",
+     "tile_id": "trx", "window": "Latest", "basis": "MoM",
+     "region": tiles.ALL_REGIONS},
+    {"id": "G19", "question": "(tile) NRx · R3M · YoY · South", "type": "tile",
+     "tile_id": "nrx", "window": "R3M", "basis": "YoY", "region": "South"},
+    {"id": "G20", "question": "(tile) TRx market share · R6M · QoQ",
+     "type": "tile", "tile_id": "trx_share", "window": "R6M",
+     "basis": "QoQ", "region": tiles.ALL_REGIONS},
 ]
 
 
 def run_golden(record: bool = True) -> pd.DataFrame:
     rows = []
     for g in GOLDEN:
+        if g["type"] == "tile":
+            kwargs = {"window": g["window"], "basis": g["basis"], "region": g["region"]}
+            question = tiles.canonical_question(g["tile_id"], **kwargs)
+            direct = answer_intent(tiles.intent_for(g["tile_id"], **kwargs))
+            asked = answer(question)
+            repeated = answer(question)
+            same_resolution = direct.resolution == asked.resolution
+            same_data = direct.data_version == asked.data_version == sl.data_version()
+            same_hash = direct.result_hash == asked.result_hash
+            rows.append({"id": g["id"], "question": question, "class": "Tile parity",
+                         "tier": direct.tier,
+                         "pass": bool(same_hash and same_resolution and same_data),
+                         "reproducible": asked.result_hash == repeated.result_hash,
+                         "detail": "tile and opened question share hash, resolution, and data"})
+            continue
         if g["type"] == "watch":
             feed1 = services.watch_feed(_GOLDEN_WATCH, g["z"])
             feed2 = services.watch_feed(_GOLDEN_WATCH, g["z"])

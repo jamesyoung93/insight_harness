@@ -19,7 +19,10 @@ RETRIEVAL, DESCRIPTIVE, DIAGNOSTIC, CAUSAL, PREDICTIVE, OUT_OF_SCOPE = (
     "Retrieval", "Descriptive", "Diagnostic", "Causal", "Predictive", "Out of scope")
 
 _CAUSAL = re.compile(r"\b(why|caused?|drove|drive[sn]?|impact of|effect of|because of|due to|roi of)\b", re.I)
-_DIAGNOSTIC = re.compile(r"\b(account for|break ?down|decompos|which segments?|which regions?|contribut|where did)\b", re.I)
+_DIAGNOSTIC = re.compile(
+    r"\b(account for|break ?down|decompos|which segments?|which regions?|"
+    r"which specialties|which territories|which districts|which payer channels|"
+    r"contribut|where did)\b", re.I)
 _RETRIEVAL = re.compile(r"\b(list|find|show me the accounts|which accounts|top \d+|whitespace|no activity)\b", re.I)
 _PREDICTIVE = re.compile(r"\b(forecast|predict|will|next quarter|next year|project(ed|ion)?)\b", re.I)
 _TREND = re.compile(r"\b(trend|over time|by month|monthly|last \d+ months)\b", re.I)
@@ -171,7 +174,8 @@ def parse(question: str) -> Intent:
     if _CAUSAL.search(q):
         event = _find_event(q)
         if event:
-            return Intent(q, CAUSAL, metric or "revenue", filters, event_id=event)
+            default_metric = sl.EVENTS[event].get("metrics", ["trx"])[0]
+            return Intent(q, CAUSAL, metric or default_metric, filters, event_id=event)
         return Intent(q, CAUSAL, metric, filters, reason=refusal_reason(CAUSAL))
 
     if _DIAGNOSTIC.search(q):

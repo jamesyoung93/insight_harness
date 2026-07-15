@@ -1,5 +1,9 @@
-"""Ask: the home page. Question box with memory — a session history rail,
-grouped suggestions, override disclosure, and the shared answer renderer."""
+"""Question workspace used on Home.
+
+The KPI band lives in :mod:`views.home`; this module keeps the interrogable
+question surface, session history, override disclosure, and shared artifact
+renderer in one place.
+"""
 from __future__ import annotations
 
 import logging
@@ -16,14 +20,14 @@ _BASIS_CODES = {"prior month": "prior_month", "prior quarter": "prior_quarter",
                 "same month last year": "yoy"}
 
 SUGGESTIONS = {
-    "Find": ["List whitespace accounts with no activity",
-             "Top 15 accounts by revenue"],
-    "Measure": ["What is revenue in the West region?",
-                "Trend calls by month in the North region"],
-    "Break down": ["Which segments account for the revenue change?",
-                   "Which regions account for the units change?"],
-    "Test an event": ["What was the impact of the partner enablement program in the East?",
-                      "What was the impact of the competitor entry in the West?"],
+    "Find": ["List whitespace HCPs with no activity",
+             "Top 15 accounts by TRx"],
+    "Measure": ["What is TRx in the West region?",
+                "Trend NBRx by month in Cardiology"],
+    "Break down": ["Which specialties account for the TRx change?",
+                   "Which payer channels account for the NRx change?"],
+    "Test an event": ["What was the impact of the speaker program in the East?",
+                      "What was the impact of the competitor launch in West Cardiology?"],
 }
 
 
@@ -75,12 +79,8 @@ def _history_rail() -> None:
         st.caption(headline if len(headline) <= 80 else headline[:80] + "…")
 
 
-def render() -> None:
-    st.title("Ask")
-    st.caption("Ask about governed metrics in plain language. Every answer carries its own "
-               "provenance; a question that can't be answered reliably gets a scoped refusal "
-               "with a suggested reframe.")
-
+def render_workspace() -> None:
+    """Render the question box and history rail without a page title."""
     col_main, col_rail = st.columns([5, 2], gap="large")
 
     with col_main:
@@ -113,7 +113,8 @@ def render() -> None:
                                 key="ask_src", on_change=common.clear_replay,
                                 format_func=lambda s: s if s == "governed default"
                                 else sl.SOURCES[s]["name"])
-            var = oc2.selectbox("Revenue variant", ["governed default", "net", "gross"],
+            variants = sorted({v for metric in sl.METRICS.values() for v in metric["variants"]})
+            var = oc2.selectbox("Metric variant", ["governed default"] + variants,
                                 key="ask_var", on_change=common.clear_replay)
 
         basis = None
@@ -141,7 +142,7 @@ def render() -> None:
             gov = (sl.materiality(),
                    tuple((m, sl.default_variant(m)) for m in sl.METRICS))
             params = (q, src, var, basis, bool(api_key),
-                      st.session_state.get("llm_model"), gov)
+                      st.session_state.get("llm_model"), gov, sl.data_version())
             cached = st.session_state.get("_answer_cache")
             if cached and cached[0] == params:
                 art = cached[1]  # same request: don't recompute (or re-call the LLM)
@@ -170,3 +171,12 @@ def render() -> None:
 
     with col_rail:
         _history_rail()
+
+
+def render() -> None:
+    """Standalone compatibility renderer; the application routes to Home."""
+    st.title("Home")
+    st.caption("Ask about governed metrics in plain language. Every answer carries its own "
+               "provenance; a question that can't be answered reliably gets a scoped refusal "
+               "with a suggested reframe.")
+    render_workspace()
