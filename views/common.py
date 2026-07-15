@@ -8,7 +8,7 @@ import pandas as pd
 import streamlit as st
 
 from harness import semantic_layer as sl
-from harness import services
+from harness import saved_insights, services, tiles
 from harness.provenance import TIER_ABSTAINED
 
 TIER_COLORS = {"Verified": "#0E7C7B", "Directional": "#B07C0E", "Hypothesis": "#8A4FBE",
@@ -18,6 +18,8 @@ TIER_COLORS = {"Verified": "#0E7C7B", "Directional": "#B07C0E", "Hypothesis": "#
 C_UP, C_DOWN, C_TOTAL = "#2a78d6", "#B07C0E", "#6B7280"
 C_PRIMARY, C_REFERENCE = "#2a78d6", "#6B7280"
 C_LABEL = "#52514e"
+HOME_PAGE = "Home"
+_BASIS_CONTROL = {code: label for label, code in tiles.BASIS_CONTROLS.items()}
 
 
 # --------------------------------------------------------------------------- #
@@ -30,15 +32,60 @@ def goto(page: str, **state) -> None:
 
 
 def queue_question(question: str) -> None:
-    """Callback: put a question in the Ask box and go there."""
+    """Callback: put a question in the Home explorer and go there."""
     st.session_state["ask_q"] = question
     st.session_state["_ask_q_last"] = question
     st.session_state.pop("replay_key", None)
-    st.session_state["nav"] = "Ask"
+    st.session_state["nav"] = HOME_PAGE
 
 
 def clear_replay() -> None:
     st.session_state.pop("replay_key", None)
+
+
+def saved_insight_store() -> saved_insights.InMemorySavedInsightStore:
+    """Return this viewer's store, copying legacy watches once without writes."""
+
+    if saved_insights.SESSION_STORE_KEY not in st.session_state:
+        legacy = services.load_watchlist()
+        st.session_state[saved_insights.SESSION_STORE_KEY] = \
+            saved_insights.InMemorySavedInsightStore(legacy)
+    return saved_insights.session_store(st.session_state)
+
+
+def _watch_window(intent) -> str:
+    window = getattr(intent, "window", None)
+    if window is None:
+        return "Latest"
+    if window.kind == "last_n":
+        match = next((label for label, months in tiles.WINDOW_CONTROLS.items()
+                      if months == len(window.months)), None)
+        if match:
+            return match
+    raise ValueError("Only Latest, R3M, R6M, and R12M windows can be watched.")
+
+
+def _save_watch(art) -> saved_insights.SaveResult:
+    intent = art.extras["intent"]
+    resolution = art.resolution
+    basis_code = intent.compare_basis
+    if basis_code is None and art.engine == "decomposition":
+        basis_code = "prior_quarter"
+    basis = _BASIS_CONTROL.get(basis_code or "prior_month", "MoM")
+    viz_kind = "line" if intent.trend or art.chart_df is not None else "sparkline"
+    label = (f"{sl.METRICS[resolution.metric]['label']} · "
+             f"{sl.scope_string(intent.filters)}")
+    insight = saved_insights.create_saved_insight(
+        resolution.metric,
+        intent.filters,
+        label=label,
+        source=resolution.source,
+        variant=resolution.variant,
+        window=_watch_window(intent),
+        basis=basis,
+        viz_kind=viz_kind,
+    )
+    return saved_insight_store().add(insight)
 
 
 # --------------------------------------------------------------------------- #
@@ -278,11 +325,12 @@ def _actions_row(art, key: str) -> None:
     if watchable:
         if c5.button("👁 Watch", key=f"{key}_watch",
                      help="Pin this metric and scope to the Watched list in Monitoring."):
-            intent = art.extras.get("intent")
-            label = (f"{sl.METRICS[art.resolution.metric]['label']} · "
-                     f"{sl.scope_string(intent.filters)}")
-            added = services.add_watch(art.resolution.metric, intent.filters, label)
-            st.toast("Watching — see Monitoring." if added else "Already on the watchlist.")
+            try:
+                result = _save_watch(art)
+                st.toast("Watching — see Monitoring." if result.added
+                         else "Already on the watchlist.")
+            except ValueError as exc:
+                st.toast(str(exc))
     with c6:
         st.code(art.result_hash, language=None)  # copyable result hash
 

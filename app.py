@@ -9,7 +9,7 @@ import os
 import streamlit as st
 
 from harness import semantic_layer as sl
-from views import ask, causal_studio, help_page, monitoring, registry, reliability
+from views import causal_studio, digest, help_page, home, monitoring, registry, reliability
 
 st.set_page_config(page_title="Insight Harness", page_icon="🧭", layout="wide")
 
@@ -26,7 +26,8 @@ st.markdown("""
 </style>""", unsafe_allow_html=True)
 
 PAGES = {
-    "Ask": ask.render,
+    "Home": home.render,
+    "Digest": digest.render,
     "Monitoring": monitoring.render,
     "Causal Studio": causal_studio.render,
     "Semantic Layer": registry.render,

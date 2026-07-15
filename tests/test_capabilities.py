@@ -145,6 +145,82 @@ def test_descriptive_basis_appends_comparison():
     assert "vs same month last year" in art.headline
 
 
+def test_trend_yoy_emits_aligned_reference_and_latest_comparison():
+    art = pipeline.answer("Trend revenue last 6 months vs same month last year")
+    current_col = sl.METRICS["revenue"]["variants"][sl.default_variant("revenue")]["label"]
+    reference_cols = [c for c in art.chart_df.columns if c not in ("month", current_col)]
+    assert len(reference_cols) == 1
+    reference_col = reference_cols[0]
+
+    df = sl.load_fact("source_a")
+    value_col = sl.column_for("revenue", sl.default_variant("revenue"))
+    monthly = df.groupby("month")[value_col].sum()
+    months = sl.months()
+    for row in art.chart_df.itertuples(index=False, name=None):
+        month, current, reference = row
+        reference_month = months[months.index(month) - 12]
+        assert current == pytest.approx(float(monthly[month]))
+        assert reference == pytest.approx(float(monthly[reference_month]))
+
+    comparison = art.extras["comparison"]
+    latest_month = art.chart_df.iloc[-1]["month"]
+    reference_month = months[months.index(latest_month) - 12]
+    assert comparison["basis"] == "yoy"
+    assert comparison["basis_label"] == "vs same month last year"
+    assert comparison["available"] is True
+    assert comparison["current_month"] == latest_month
+    assert comparison["reference_month"] == reference_month
+    assert comparison["current_value"] == pytest.approx(float(monthly[latest_month]))
+    assert comparison["reference_value"] == pytest.approx(float(monthly[reference_month]))
+    assert comparison["delta"] == pytest.approx(
+        float(monthly[latest_month] - monthly[reference_month]))
+    assert comparison["delta_pct"] == pytest.approx(
+        float((monthly[latest_month] - monthly[reference_month])
+              / monthly[reference_month]))
+
+
+@pytest.mark.parametrize("phrase,basis,steps", [
+    ("vs prior month", "prior_month", 1),
+    ("vs prior quarter", "prior_quarter", 3),
+    ("vs same month last year", "yoy", 12),
+])
+def test_descriptive_point_exposes_structured_comparison(phrase, basis, steps):
+    art = pipeline.answer(f"What was revenue in May 2026 {phrase}?")
+    comparison = art.extras["comparison"]
+    months = sl.months()
+    reference_month = months[months.index("2026-05") - steps]
+    df = sl.load_fact("source_a")
+    col = sl.column_for("revenue", sl.default_variant("revenue"))
+    monthly = df.groupby("month")[col].sum()
+
+    assert comparison["basis"] == basis
+    assert comparison["available"] is True
+    assert comparison["current_month"] == "2026-05"
+    assert comparison["current_value"] == pytest.approx(art.value)
+    assert comparison["reference_month"] == reference_month
+    assert comparison["reference_value"] == pytest.approx(float(monthly[reference_month]))
+    assert comparison["delta"] == pytest.approx(
+        comparison["current_value"] - comparison["reference_value"])
+    assert comparison["delta_pct"] == pytest.approx(
+        comparison["delta"] / comparison["reference_value"])
+
+
+def test_trend_comparison_discloses_insufficient_reference_history():
+    art = pipeline.answer("Trend revenue by month in Q1 2025 vs same month last year")
+    reference_cols = [c for c in art.chart_df.columns if c not in ("month", "Net revenue")]
+    assert len(reference_cols) == 1
+    assert art.chart_df[reference_cols[0]].isna().all()
+    comparison = art.extras["comparison"]
+    assert comparison["basis"] == "yoy"
+    assert comparison["current_month"] == "2025-03"
+    assert comparison["available"] is False
+    assert comparison["reference_month"] is None
+    assert comparison["reference_value"] is None
+    assert any("predates the available history" in caveat
+               and "latest-point comparison is unavailable" in caveat
+               for caveat in art.caveats)
+
+
 # --------------------------------------------------------------------------- #
 # LLM translation contract for the new capabilities
 # --------------------------------------------------------------------------- #

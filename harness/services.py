@@ -15,19 +15,39 @@ FEEDBACK_LOG = Path(__file__).parent.parent / "data" / "feedback_log.jsonl"
 # canonical wording per metric for machine-composed questions (drill-through,
 # refusal reframes); every composed question must round-trip the parser
 PRIMARY_KEYWORD = {"revenue": "revenue", "units": "units", "calls": "calls",
-                   "new_customers": "new customers"}
+                   "new_customers": "new customers", "trx": "TRx", "nrx": "NRx",
+                   "nbrx": "NBRx", "trx_share": "TRx market share",
+                   "samples": "samples", "speaker_attendance": "speaker attendance",
+                   "new_writers": "new writers"}
 
 
-def breakdown_question(metric: str, filters: dict) -> str:
+def breakdown_question(metric: str, filters: dict, window_n: int | None = None,
+                       basis: str | None = None) -> str:
     """The canonical diagnostic question for a monitored scope. Drill-through
-    asks a real question so the step lands in history and reproduces."""
+    asks a real question so the step lands in history and reproduces. Optional
+    tile controls stay in the question text, keeping navigation reproducible."""
     kw = PRIMARY_KEYWORD.get(metric, "revenue")
-    target = next((d for d in ("segment", "region", "channel") if d not in filters), "segment")
+    target = next((d for d in ("specialty", "payer_channel", "territory", "district",
+                               "region", "segment", "channel") if d not in filters),
+                  "specialty")
+    target_label = {"specialty": "specialties", "payer_channel": "payer channels",
+                    "territory": "territories", "district": "districts",
+                    "region": "regions", "segment": "segments",
+                    "channel": "channels"}[target]
     values: list = []
     for v in filters.values():
         values.extend(v if isinstance(v, (list, tuple)) else [v])
     where = f" in {' and '.join(values)}" if values else ""
-    return f"Which {target}s account for the {kw} change{where}?"
+    window = ""
+    if window_n:
+        unit = "month" if window_n == 1 else "months"
+        window = f" over the last {window_n} {unit}"
+    basis_text = {
+        "prior_month": " vs prior month",
+        "prior_quarter": " vs prior quarter",
+        "yoy": " vs same month last year",
+    }.get(basis, "")
+    return f"Which {target_label} account for the {kw} change{where}{window}{basis_text}?"
 
 
 # --------------------------------------------------------------------------- #
@@ -62,15 +82,16 @@ def check_divergence(art: AnswerArtifact, intent) -> None:
                     continue  # alternate can't reproduce this comparison window
                 if m1 not in months:
                     m1, note = months[-1], f"window clamped to {months[-1]} (reporting lag)"
-                alt_val = float(df[df["month"] == m1][col].sum()
-                                - df[df["month"] == m0][col].sum())
+                alt_val = float(sl.aggregate_metric(df[df["month"] == m1], res.metric, variant)
+                                - sl.aggregate_metric(df[df["month"] == m0], res.metric, variant))
             elif window and not intent.trend:
                 wmonths = [m for m in window.months if m in set(months)]
                 if not wmonths:
                     continue
                 if len(wmonths) < len(window.months):
                     note = "window clamped to available months (reporting lag)"
-                alt_val = float(df[df["month"].isin(wmonths)][col].sum())
+                alt_val = sl.aggregate_metric(df[df["month"].isin(wmonths)],
+                                              res.metric, variant)
             else:
                 target = window.months[-1] if window else months[-1]
                 if target not in months:
@@ -78,7 +99,7 @@ def check_divergence(art: AnswerArtifact, intent) -> None:
                     if not earlier:
                         continue
                     target = earlier[-1]
-                alt_val = float(df[df["month"] == target][col].sum())
+                alt_val = sl.aggregate_metric(df[df["month"] == target], res.metric, variant)
                 if kind == "source" and sl.SOURCES[source]["lag_months"]:
                     note = f"latest available month is {target} (reporting lag)"
         except Exception:

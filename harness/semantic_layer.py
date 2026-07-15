@@ -24,21 +24,21 @@ GOVERNANCE_LOG = DATA_DIR / "governance_log.jsonl"
 # --------------------------------------------------------------------------- #
 SOURCES = {
     "source_a": {
-        "name": "Internal warehouse (Source A)",
+        "name": "Direct/DDD + specialty pharmacy feed",
         "kind": "transactional",
         "cadence": "monthly",
         "lag_months": 0,
         "account_grain": True,
-        "notes": ["System of record for finance reporting.",
-                  "Activity metrics (calls, new customers) collected here only."],
+        "notes": ["System of record at account grain for monthly synthetic data.",
+                  "Details, samples, programs, and writer activity are collected here only."],
     },
     "source_b": {
-        "name": "External panel feed (Source B)",
+        "name": "Projected retail panel",
         "kind": "panel-projected",
         "cadence": "monthly",
         "lag_months": 1,
         "account_grain": False,
-        "notes": ["Panel-projected: known small multiplicative bias vs. warehouse.",
+        "notes": ["Panel-projected: known small multiplicative bias vs. direct/DDD feeds.",
                   "Latest month unavailable (1-month reporting lag).",
                   "Early history restated by the vendor."],
     },
@@ -48,6 +48,36 @@ SOURCES = {
 # Metric registry — variants are first-class, each with an owner and notes
 # --------------------------------------------------------------------------- #
 METRICS = {
+    "trx": {
+        "label": "TRx", "family": "prescriptions", "kind": "additive", "additive": True,
+        "sources": ["source_a", "source_b"], "default_source": "source_a",
+        "default_variant": "units",
+        "variants": {
+            "units": {"column": "trx_units", "label": "TRx units", "comparison_group": "volume", "owner": "Commercial Analytics", "notes": "Total prescriptions in unit equivalents."},
+            "dollars": {"column": "trx_dollars", "label": "TRx dollars", "comparison_group": "currency", "owner": "Finance", "notes": "Gross prescription value before rebates."},
+            "normalized": {"column": "trx_normalized", "label": "TRx normalized equivalents", "comparison_group": "volume", "owner": "Commercial Analytics", "notes": "Pack-size normalized equivalent units."},
+        },
+    },
+    "nrx": {
+        "label": "NRx", "family": "new_prescriptions", "kind": "additive", "additive": True,
+        "sources": ["source_a", "source_b"], "default_source": "source_a",
+        "default_variant": "units",
+        "variants": {"units": {"column": "nrx", "label": "NRx", "owner": "Brand Analytics", "notes": "New prescriptions in the month."}},
+    },
+    "nbrx": {
+        "label": "NBRx", "family": "new_to_brand", "kind": "additive", "additive": True,
+        "sources": ["source_a", "source_b"], "default_source": "source_a",
+        "default_variant": "units",
+        "variants": {"units": {"column": "nbrx", "label": "NBRx", "owner": "Brand Analytics", "notes": "New-to-brand prescriptions in the month."}},
+    },
+    "trx_share": {
+        "label": "TRx market share", "family": "share", "kind": "ratio", "additive": False,
+        "sources": ["source_a", "source_b"], "default_source": "source_a",
+        "default_variant": "brand_market",
+        "variants": {"brand_market": {"numerator": "trx_units", "denominator": "market_trx",
+                                        "label": "TRx market share", "owner": "Brand Analytics",
+                                        "notes": "Brand TRx divided by total market TRx; descriptive only."}},
+    },
     "revenue": {
         "label": "Revenue",
         "additive": True,
@@ -70,7 +100,8 @@ METRICS = {
         "variants": {"std": {"column": "units", "label": "Units", "owner": "Sales Ops", "notes": ""}},
     },
     "calls": {
-        "label": "Sales calls",
+        "label": "Details",
+        "family": "field_effort", "kind": "additive",
         "additive": True,
         "sources": ["source_a"],
         "default_source": "source_a",
@@ -91,9 +122,25 @@ METRICS = {
                        "owner": "Marketing", "notes": "Includes reactivated lapsed accounts. Campaign reporting."},
         },
     },
+    "samples": {
+        "label": "Samples dropped", "family": "field_effort", "kind": "additive", "additive": True,
+        "sources": ["source_a"], "default_source": "source_a", "default_variant": "units",
+        "variants": {"units": {"column": "samples", "label": "Sample units", "owner": "Sales Operations", "notes": "Recorded sample units."}},
+    },
+    "speaker_attendance": {
+        "label": "Speaker attendance", "family": "programs", "kind": "additive", "additive": True,
+        "sources": ["source_a"], "default_source": "source_a", "default_variant": "attendees",
+        "variants": {"attendees": {"column": "speaker_attendance", "label": "Speaker-program attendance", "owner": "Marketing Operations", "notes": "Recorded HCP attendance."}},
+    },
+    "new_writers": {
+        "label": "New writers", "family": "writers", "kind": "additive", "additive": True,
+        "sources": ["source_a"], "default_source": "source_a", "default_variant": "strict",
+        "variants": {"strict": {"column": "new_writers", "label": "New writers", "owner": "Brand Analytics", "notes": "First observed brand prescription in the measured history."}},
+    },
 }
 
-DIMENSIONS = ["region", "segment", "channel"]
+DIMENSIONS = ["territory", "district", "region", "specialty", "payer_channel",
+              "segment", "channel"]
 MATERIALITY_REL = 0.02  # divergence above 2% is surfaced (registry default)
 
 
@@ -154,6 +201,14 @@ def governance_log() -> list[dict]:
 # keyword -> metric mapping used by the built-in parser and by the
 # language-model translator's registry context
 METRIC_KEYWORDS = {
+    "trx market share": "trx_share", "market share": "trx_share", "share": "trx_share",
+    "total prescriptions": "trx", "total scripts": "trx", "trx": "trx", "scripts": "trx",
+    "new-to-brand": "nbrx", "new to brand": "nbrx", "nbrx": "nbrx",
+    "new prescriptions": "nrx", "nrx": "nrx",
+    "details": "calls", "detail calls": "calls",
+    "samples": "samples", "sample units": "samples",
+    "speaker attendance": "speaker_attendance", "speaker programs": "speaker_attendance",
+    "new writers": "new_writers", "writers": "new_writers",
     "revenue": "revenue", "sales": "revenue", "bookings": "revenue",
     "units": "units", "volume": "units",
     "calls": "calls", "activity": "calls",
@@ -164,6 +219,28 @@ METRIC_KEYWORDS = {
 # Event registry — feeds the causal design advisor
 # --------------------------------------------------------------------------- #
 EVENTS = {
+    "speaker_launch": {
+        "name": "Speaker-program launch (East)", "start": "2025-10",
+        "scope": {"region": "East"}, "metrics": ["trx", "nrx", "nbrx"],
+        "keywords": ["east", "speaker", "speaker program", "program launch"],
+        "candidate_controls": {"region": ["North", "South"]},
+        "notes": "Region-wide program; West excluded because of a concurrent competitor shock.",
+    },
+    "formulary_win": {
+        "name": "Medicare Part D formulary win (South)", "start": "2026-01",
+        "scope": {"region": "South"}, "metrics": ["trx", "nrx"],
+        "keywords": ["south", "formulary", "medicare", "payer win"],
+        "candidate_controls": {"region": ["North", "East"]},
+        "notes": "Monthly synthetic event used to test a payer-channel hypothesis.",
+    },
+    "competitor_launch": {
+        "name": "Competitor launch (West / Cardiology)", "start": "2026-04",
+        "scope": {"region": "West", "specialty": "Cardiology"},
+        "metrics": ["trx", "nrx", "nbrx"],
+        "keywords": ["west", "competitor", "cardiology", "competitor launch"],
+        "candidate_controls": {"region": ["North", "South", "East"]},
+        "notes": "Short post-period; treated specialty is explicitly registered.",
+    },
     "east_program": {
         "name": "Partner enablement program (East)",
         "start": "2025-10",
@@ -203,7 +280,10 @@ def resolve(metric: str, source: str | None = None, variant: str | None = None) 
     variant_ok = variant in m["variants"] if variant else False
     chosen_source = source if source_ok else m["default_source"]
     chosen_variant = variant if variant_ok else default_variant(metric)
-    alternates = [("variant", v) for v in m["variants"] if v != chosen_variant]
+    chosen_group = m["variants"][chosen_variant].get("comparison_group")
+    alternates = [("variant", v) for v, spec in m["variants"].items()
+                  if v != chosen_variant
+                  and (chosen_group is None or spec.get("comparison_group") == chosen_group)]
     alternates += [("source", s) for s in m["sources"] if s != chosen_source]
     clamped = [name for name, requested, ok in
                (("source", source, source_ok), ("variant", variant, variant_ok))
@@ -266,4 +346,27 @@ def scope_string(filters: dict) -> str:
 
 
 def column_for(metric: str, variant: str) -> str:
-    return METRICS[metric]["variants"][variant]["column"]
+    spec = METRICS[metric]["variants"][variant]
+    return spec.get("column") or spec["numerator"]
+
+
+def metric_kind(metric: str) -> str:
+    return METRICS[metric].get("kind", "additive")
+
+
+def aggregate_metric(df: pd.DataFrame, metric: str, variant: str) -> float:
+    """Aggregate additive and ratio metrics without ever summing percentages."""
+    spec = METRICS[metric]["variants"][variant]
+    if metric_kind(metric) == "ratio":
+        denominator = float(df[spec["denominator"]].sum())
+        return float(df[spec["numerator"]].sum()) / denominator if denominator else 0.0
+    return float(df[spec["column"]].sum())
+
+
+def monthly_metric(df: pd.DataFrame, metric: str, variant: str) -> pd.Series:
+    spec = METRICS[metric]["variants"][variant]
+    if metric_kind(metric) == "ratio":
+        numerator = df.groupby("month")[spec["numerator"]].sum()
+        denominator = df.groupby("month")[spec["denominator"]].sum()
+        return numerator.div(denominator.where(denominator != 0)).fillna(0.0).sort_index()
+    return df.groupby("month")[spec["column"]].sum().sort_index()

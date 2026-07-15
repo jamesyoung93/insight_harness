@@ -9,7 +9,7 @@ from __future__ import annotations
 import pandas as pd
 
 from .. import semantic_layer as sl
-from ..provenance import AnswerArtifact, TIER_VERIFIED
+from ..provenance import AnswerArtifact, TIER_ABSTAINED, TIER_VERIFIED
 from ..triage import BASIS_LABELS, Intent
 
 _BASIS_STEPS = {"prior_month": 1, "prior_quarter": 3, "yoy": 12}
@@ -26,6 +26,16 @@ def _contributions(df: pd.DataFrame, col: str, dim: str, m0: str, m1: str) -> pd
 
 
 def decompose(intent: Intent, res: sl.Resolution) -> AnswerArtifact:
+    if sl.metric_kind(res.metric) == "ratio":
+        art = AnswerArtifact(
+            intent.question, intent.question_class, TIER_ABSTAINED, "abstention",
+            headline=(f"Declined: {sl.METRICS[res.metric]['label']} is a ratio metric; "
+                      "additive contribution decomposition would misstate the result."),
+            resolution=res,
+        )
+        art.extras["reframes"] = [f"Trend {sl.METRICS[res.metric]['label']} by month",
+                                  "Which specialties account for the TRx change?"]
+        return art
     df = sl.apply_filters(sl.load_fact(res.source), intent.filters)
     col = sl.column_for(res.metric, res.variant)
     ms = sorted(df["month"].unique())

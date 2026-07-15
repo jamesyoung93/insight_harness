@@ -1,5 +1,5 @@
 {
-  "data_version": "b5b6a4f4f77a",
+  "data_version": "402e1d3fab17",
   "months": [
     "2024-07",
     "2024-08",
@@ -27,6 +27,45 @@
     "2026-06"
   ],
   "events": {
+    "speaker_launch": {
+      "start": "2025-10",
+      "scope": {
+        "region": "East"
+      },
+      "true_effect_pct": 0.08,
+      "metrics": [
+        "trx",
+        "nrx",
+        "nbrx"
+      ],
+      "mechanism": "multiplicative regional prescription lift"
+    },
+    "formulary_win": {
+      "start": "2026-01",
+      "scope": {
+        "region": "South"
+      },
+      "true_effect_pct": 0.1,
+      "metrics": [
+        "trx",
+        "nrx"
+      ],
+      "mechanism": "lift on South partner/payer-channel volume"
+    },
+    "competitor_launch": {
+      "start": "2026-04",
+      "scope": {
+        "region": "West",
+        "specialty": "Cardiology"
+      },
+      "true_effect_pct": -0.22,
+      "metrics": [
+        "trx",
+        "nrx",
+        "nbrx"
+      ],
+      "mechanism": "multiplicative West/Cardiology shock"
+    },
     "east_program": {
       "start": "2025-10",
       "scope": {
@@ -75,6 +114,15 @@
         "MidMarket": 0.12,
         "SMB": 0.07
       }
+    },
+    "trx": {
+      "units": "total prescriptions",
+      "dollars": "gross prescription value",
+      "normalized": "pack-size normalized equivalent units"
+    },
+    "trx_share": {
+      "numerator": "brand TRx units",
+      "denominator": "market TRx units"
     },
     "new_customers": {
       "strict": "first purchase ever",

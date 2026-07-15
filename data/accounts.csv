@@ -1,241 +1,241 @@
-account_id,name,region,segment,revenue_ttm,revenue_prev_ttm,calls_90d,months_since_activity,decile
-A0001,Account 001,South,MidMarket,297.1,236.2,3,6,6
-A0002,Account 002,West,Enterprise,1253.5,824.8,10,1,9
-A0003,Account 003,East,MidMarket,345.1,330.5,6,3,6
-A0004,Account 004,West,MidMarket,653.9,708.0,10,0,8
-A0005,Account 005,West,SMB,157.3,134.2,1,5,4
-A0006,Account 006,North,Enterprise,1685.0,1658.4,4,1,10
-A0007,Account 007,West,MidMarket,221.1,204.0,11,2,5
-A0008,Account 008,North,Enterprise,1454.2,1409.3,4,1,10
-A0009,Account 009,West,SMB,277.1,268.2,6,0,6
-A0010,Account 010,East,Enterprise,730.7,573.3,3,0,8
-A0011,Account 011,East,SMB,218.6,231.6,5,0,5
-A0012,Account 012,East,MidMarket,250.7,243.3,8,0,5
-A0013,Account 013,North,SMB,183.9,137.7,5,2,4
-A0014,Account 014,East,MidMarket,371.8,440.8,10,4,6
-A0015,Account 015,South,SMB,169.0,137.0,2,0,4
-A0016,Account 016,North,SMB,36.6,41.5,6,3,1
-A0017,Account 017,South,MidMarket,376.3,362.0,10,2,6
-A0018,Account 018,East,Enterprise,772.7,752.7,8,0,9
-A0019,Account 019,North,MidMarket,246.0,222.6,12,0,5
-A0020,Account 020,East,SMB,174.8,214.5,8,3,4
-A0021,Account 021,West,Enterprise,962.7,785.7,5,0,9
-A0022,Account 022,East,MidMarket,261.2,244.3,9,0,5
-A0023,Account 023,West,MidMarket,177.8,177.6,9,7,4
-A0024,Account 024,North,SMB,124.5,113.7,1,3,3
-A0025,Account 025,North,MidMarket,280.3,311.6,4,2,6
-A0026,Account 026,North,MidMarket,339.7,230.8,5,1,6
-A0027,Account 027,West,MidMarket,212.5,191.8,2,1,5
-A0028,Account 028,East,SMB,230.3,204.0,3,0,5
-A0029,Account 029,South,SMB,104.3,83.7,0,0,2
-A0030,Account 030,East,MidMarket,135.2,126.0,15,5,3
-A0031,Account 031,East,SMB,64.0,59.8,6,4,1
-A0032,Account 032,North,MidMarket,807.2,688.3,12,1,9
-A0033,Account 033,North,SMB,81.5,84.7,0,0,2
-A0034,Account 034,North,SMB,98.2,105.3,10,0,2
-A0035,Account 035,North,Enterprise,1042.7,757.2,6,6,9
-A0036,Account 036,East,MidMarket,494.1,492.6,4,2,7
-A0037,Account 037,South,Enterprise,711.4,731.0,14,0,8
-A0038,Account 038,West,Enterprise,461.4,461.1,6,3,7
-A0039,Account 039,West,Enterprise,1613.0,1546.8,1,0,10
-A0040,Account 040,East,Enterprise,919.8,930.4,8,0,9
-A0041,Account 041,North,SMB,63.0,77.3,5,1,1
-A0042,Account 042,West,MidMarket,318.2,291.3,0,4,6
-A0043,Account 043,West,SMB,60.5,54.5,2,0,1
-A0044,Account 044,North,SMB,145.7,158.3,6,1,3
-A0045,Account 045,North,SMB,58.6,59.6,7,0,1
-A0046,Account 046,North,SMB,69.0,58.8,10,5,2
-A0047,Account 047,North,SMB,65.5,67.2,13,0,1
-A0048,Account 048,East,Enterprise,1025.9,1190.6,1,2,9
-A0049,Account 049,East,MidMarket,676.1,620.7,17,1,8
-A0050,Account 050,North,MidMarket,500.9,557.5,1,2,7
-A0051,Account 051,East,MidMarket,339.3,329.6,0,1,6
-A0052,Account 052,South,MidMarket,601.4,655.1,9,1,8
-A0053,Account 053,East,MidMarket,520.5,582.7,17,7,7
-A0054,Account 054,West,MidMarket,262.2,259.7,7,6,5
-A0055,Account 055,West,SMB,65.4,55.4,5,3,1
-A0056,Account 056,East,SMB,101.3,88.7,11,3,2
-A0057,Account 057,South,Enterprise,938.6,847.0,6,8,9
-A0058,Account 058,West,MidMarket,492.4,429.6,10,8,7
-A0059,Account 059,North,Enterprise,2032.3,1689.9,0,0,10
-A0060,Account 060,South,SMB,55.1,57.6,6,4,1
-A0061,Account 061,West,Enterprise,2168.2,1911.8,0,0,10
-A0062,Account 062,West,MidMarket,1053.2,955.1,11,0,9
-A0063,Account 063,West,MidMarket,550.5,572.0,0,3,7
-A0064,Account 064,East,SMB,148.1,139.0,6,4,3
-A0065,Account 065,North,SMB,78.6,77.3,9,3,2
-A0066,Account 066,East,Enterprise,1659.3,1444.3,0,1,10
-A0067,Account 067,South,MidMarket,257.2,189.2,15,6,5
-A0068,Account 068,East,MidMarket,595.4,525.5,12,1,8
-A0069,Account 069,West,SMB,148.0,157.2,6,1,3
-A0070,Account 070,East,MidMarket,420.1,400.3,0,0,7
-A0071,Account 071,South,MidMarket,719.9,574.9,15,0,8
-A0072,Account 072,South,Enterprise,779.7,600.3,6,2,9
-A0073,Account 073,East,SMB,36.8,28.9,17,0,1
-A0074,Account 074,East,Enterprise,595.5,564.6,10,0,8
-A0075,Account 075,South,MidMarket,478.5,448.8,10,0,7
-A0076,Account 076,North,MidMarket,902.4,809.1,10,2,9
-A0077,Account 077,North,SMB,110.4,95.8,8,1,3
-A0078,Account 078,North,MidMarket,367.2,352.2,5,1,6
-A0079,Account 079,North,MidMarket,445.2,356.5,4,3,7
-A0080,Account 080,West,SMB,56.8,58.0,8,1,1
-A0081,Account 081,East,Enterprise,1744.8,1598.0,7,8,10
-A0082,Account 082,East,MidMarket,255.5,242.1,0,1,5
-A0083,Account 083,East,SMB,59.6,51.7,12,3,1
-A0084,Account 084,South,SMB,239.9,210.5,14,2,5
-A0085,Account 085,North,SMB,69.1,72.1,11,6,2
-A0086,Account 086,South,MidMarket,405.9,419.4,8,6,7
-A0087,Account 087,South,Enterprise,421.1,401.8,0,5,7
-A0088,Account 088,East,Enterprise,749.5,738.5,10,1,9
-A0089,Account 089,West,SMB,25.8,22.0,12,0,1
-A0090,Account 090,North,Enterprise,1476.7,1470.5,9,1,10
-A0091,Account 091,North,SMB,206.9,238.5,13,4,4
-A0092,Account 092,North,Enterprise,1046.5,895.3,13,0,9
-A0093,Account 093,West,SMB,136.1,114.3,10,0,3
-A0094,Account 094,West,SMB,156.8,126.1,7,7,4
-A0095,Account 095,East,MidMarket,770.4,804.4,19,6,9
-A0096,Account 096,East,MidMarket,700.8,579.2,6,1,8
-A0097,Account 097,East,Enterprise,1193.9,1100.4,13,0,9
-A0098,Account 098,North,SMB,154.6,162.8,7,3,4
-A0099,Account 099,West,SMB,84.2,81.5,15,3,2
-A0100,Account 100,South,MidMarket,207.7,234.8,6,0,4
-A0101,Account 101,South,SMB,32.7,28.5,6,0,1
-A0102,Account 102,East,Enterprise,626.7,662.5,4,6,8
-A0103,Account 103,North,MidMarket,554.4,554.5,11,0,7
-A0104,Account 104,West,SMB,217.2,171.0,13,2,5
-A0105,Account 105,East,MidMarket,252.6,238.7,0,2,5
-A0106,Account 106,West,Enterprise,1314.4,1109.4,10,1,10
-A0107,Account 107,South,Enterprise,1612.8,1656.8,11,4,10
-A0108,Account 108,East,MidMarket,372.7,350.6,9,0,6
-A0109,Account 109,East,SMB,76.1,83.9,8,4,2
-A0110,Account 110,West,SMB,46.0,44.8,6,6,1
-A0111,Account 111,South,MidMarket,541.0,666.7,12,3,7
-A0112,Account 112,South,MidMarket,192.3,177.0,3,0,4
-A0113,Account 113,West,SMB,140.2,115.2,3,1,3
-A0114,Account 114,South,MidMarket,951.8,949.8,0,0,9
-A0115,Account 115,East,MidMarket,207.2,244.6,1,2,4
-A0116,Account 116,North,SMB,148.5,174.5,9,0,4
-A0117,Account 117,North,MidMarket,412.4,336.0,1,1,7
-A0118,Account 118,East,Enterprise,405.6,417.6,2,4,7
-A0119,Account 119,South,SMB,114.2,98.3,13,1,3
-A0120,Account 120,North,SMB,147.9,125.6,0,6,3
-A0121,Account 121,West,MidMarket,577.4,596.5,0,2,8
-A0122,Account 122,West,SMB,267.4,288.4,4,0,5
-A0123,Account 123,East,MidMarket,400.5,410.2,6,2,6
-A0124,Account 124,West,SMB,101.4,94.7,4,6,2
-A0125,Account 125,North,SMB,61.0,51.9,8,5,1
-A0126,Account 126,North,Enterprise,773.3,770.9,1,0,9
-A0127,Account 127,West,SMB,101.2,91.8,13,5,2
-A0128,Account 128,North,SMB,146.5,129.1,7,2,3
-A0129,Account 129,South,SMB,107.5,106.0,7,2,3
-A0130,Account 130,West,MidMarket,210.7,195.7,10,0,5
-A0131,Account 131,North,Enterprise,1291.5,1428.0,5,4,10
-A0132,Account 132,South,Enterprise,1356.2,1381.7,9,4,10
-A0133,Account 133,East,SMB,158.0,169.2,1,0,4
-A0134,Account 134,West,SMB,139.1,131.7,14,2,3
-A0135,Account 135,North,SMB,71.1,68.3,5,4,2
-A0136,Account 136,North,Enterprise,1656.5,1487.8,9,2,10
-A0137,Account 137,East,SMB,54.3,56.7,4,1,1
-A0138,Account 138,North,SMB,116.9,126.4,2,0,3
-A0139,Account 139,West,Enterprise,281.3,340.9,9,1,6
-A0140,Account 140,East,Enterprise,375.7,394.8,4,3,6
-A0141,Account 141,East,SMB,123.9,108.7,11,3,3
-A0142,Account 142,South,Enterprise,2908.6,3391.2,13,0,10
-A0143,Account 143,North,Enterprise,436.9,502.6,12,1,7
-A0144,Account 144,North,SMB,82.1,61.7,11,2,2
-A0145,Account 145,South,SMB,53.9,53.8,5,3,1
-A0146,Account 146,East,SMB,75.3,51.5,0,5,2
-A0147,Account 147,North,MidMarket,251.7,235.1,11,3,5
-A0148,Account 148,North,SMB,109.3,98.6,4,1,3
-A0149,Account 149,South,MidMarket,300.2,295.8,13,0,6
-A0150,Account 150,West,MidMarket,155.1,141.7,7,5,4
-A0151,Account 151,East,Enterprise,1968.1,1723.6,5,2,10
-A0152,Account 152,South,Enterprise,2078.4,2127.9,13,4,10
-A0153,Account 153,West,SMB,61.6,63.3,5,0,1
-A0154,Account 154,East,MidMarket,214.5,227.9,4,0,5
-A0155,Account 155,North,MidMarket,521.2,516.8,10,2,7
-A0156,Account 156,East,Enterprise,1573.2,1509.4,10,3,10
-A0157,Account 157,West,SMB,152.7,142.5,11,3,4
-A0158,Account 158,North,MidMarket,469.6,471.7,5,1,7
-A0159,Account 159,West,MidMarket,495.6,483.5,7,0,7
-A0160,Account 160,West,MidMarket,395.4,393.7,3,0,6
-A0161,Account 161,North,SMB,160.0,133.9,11,1,4
-A0162,Account 162,South,SMB,214.6,245.8,8,1,5
-A0163,Account 163,East,SMB,158.3,128.3,17,0,4
-A0164,Account 164,West,MidMarket,227.1,234.0,5,0,5
-A0165,Account 165,West,SMB,63.0,64.0,4,3,1
-A0166,Account 166,West,MidMarket,335.0,353.7,10,8,6
-A0167,Account 167,South,Enterprise,1257.6,1281.0,4,4,10
-A0168,Account 168,North,SMB,121.9,94.3,8,5,3
-A0169,Account 169,South,Enterprise,848.4,832.7,7,4,9
-A0170,Account 170,North,MidMarket,719.7,687.9,5,4,8
-A0171,Account 171,East,Enterprise,2653.0,2719.3,10,0,10
-A0172,Account 172,South,MidMarket,621.7,752.9,14,1,8
-A0173,Account 173,East,Enterprise,651.8,519.0,1,0,8
-A0174,Account 174,North,SMB,52.8,50.9,5,0,1
-A0175,Account 175,East,MidMarket,279.2,301.8,0,3,6
-A0176,Account 176,North,SMB,115.4,117.6,4,1,3
-A0177,Account 177,North,MidMarket,825.3,768.4,6,1,9
-A0178,Account 178,North,SMB,145.3,152.2,10,4,3
-A0179,Account 179,West,Enterprise,712.3,718.7,17,2,8
-A0180,Account 180,East,MidMarket,582.9,504.7,5,2,8
-A0181,Account 181,East,MidMarket,298.4,367.5,7,0,6
-A0182,Account 182,East,MidMarket,429.8,401.1,11,2,7
-A0183,Account 183,North,MidMarket,600.5,573.1,4,4,8
-A0184,Account 184,North,SMB,87.9,87.5,0,7,2
-A0185,Account 185,East,SMB,67.8,60.0,1,4,2
-A0186,Account 186,East,SMB,66.3,49.5,9,7,1
-A0187,Account 187,North,SMB,254.0,191.3,8,1,5
-A0188,Account 188,South,SMB,103.9,116.1,9,3,2
-A0189,Account 189,East,MidMarket,260.8,227.2,7,1,5
-A0190,Account 190,East,Enterprise,870.5,846.8,9,4,9
-A0191,Account 191,North,Enterprise,1435.9,1297.0,6,4,10
-A0192,Account 192,East,SMB,271.2,219.5,5,0,6
-A0193,Account 193,East,SMB,85.6,79.3,7,1,2
-A0194,Account 194,West,SMB,18.8,18.4,7,3,1
-A0195,Account 195,East,Enterprise,1428.8,1197.0,10,0,10
-A0196,Account 196,West,MidMarket,346.3,394.1,7,3,6
-A0197,Account 197,West,SMB,79.4,79.2,8,2,2
-A0198,Account 198,North,SMB,76.0,81.8,15,4,2
-A0199,Account 199,North,MidMarket,322.0,307.3,9,2,6
-A0200,Account 200,West,Enterprise,903.6,1035.9,7,0,9
-A0201,Account 201,East,MidMarket,216.0,169.1,10,1,5
-A0202,Account 202,North,Enterprise,1100.2,1092.1,10,2,9
-A0203,Account 203,North,Enterprise,842.4,869.4,4,5,9
-A0204,Account 204,West,SMB,114.5,131.8,12,2,3
-A0205,Account 205,North,MidMarket,525.2,488.9,0,4,7
-A0206,Account 206,North,Enterprise,1345.3,1530.4,6,0,10
-A0207,Account 207,North,Enterprise,717.3,663.7,9,0,8
-A0208,Account 208,South,Enterprise,876.5,803.1,11,6,9
-A0209,Account 209,East,MidMarket,693.3,559.0,0,1,8
-A0210,Account 210,North,MidMarket,693.2,622.3,4,0,8
-A0211,Account 211,East,Enterprise,727.6,588.3,4,3,8
-A0212,Account 212,East,Enterprise,656.2,733.9,4,3,8
-A0213,Account 213,East,MidMarket,179.6,223.6,8,0,4
-A0214,Account 214,West,SMB,156.3,176.2,3,0,4
-A0215,Account 215,East,SMB,108.7,109.1,6,4,3
-A0216,Account 216,South,SMB,163.3,187.6,4,0,4
-A0217,Account 217,North,MidMarket,177.1,144.1,3,1,4
-A0218,Account 218,South,SMB,132.2,127.8,0,0,3
-A0219,Account 219,West,SMB,77.6,83.3,4,1,2
-A0220,Account 220,South,MidMarket,319.6,283.6,14,1,6
-A0221,Account 221,West,Enterprise,1919.5,1924.9,9,6,10
-A0222,Account 222,West,SMB,109.9,100.8,11,2,3
-A0223,Account 223,West,MidMarket,160.3,167.3,1,0,4
-A0224,Account 224,West,MidMarket,367.9,376.2,7,1,6
-A0225,Account 225,North,SMB,249.8,292.8,0,2,5
-A0226,Account 226,South,SMB,235.2,256.7,8,0,5
-A0227,Account 227,West,Enterprise,1695.1,1737.1,5,1,10
-A0228,Account 228,East,SMB,100.0,92.8,12,5,2
-A0229,Account 229,North,MidMarket,452.9,465.7,4,8,7
-A0230,Account 230,East,SMB,143.5,169.5,4,4,3
-A0231,Account 231,North,Enterprise,451.2,478.2,9,1,7
-A0232,Account 232,West,SMB,161.0,134.2,8,2,4
-A0233,Account 233,West,Enterprise,411.3,393.2,1,2,7
-A0234,Account 234,South,MidMarket,166.5,164.2,4,8,4
-A0235,Account 235,East,Enterprise,565.9,509.8,11,4,8
-A0236,Account 236,South,SMB,101.9,69.2,8,4,2
-A0237,Account 237,West,SMB,60.7,55.0,16,2,1
-A0238,Account 238,West,MidMarket,608.8,559.0,1,0,8
-A0239,Account 239,North,SMB,62.0,75.4,6,4,1
-A0240,Account 240,South,SMB,84.8,77.0,14,1,2
+account_id,name,region,segment,district,territory,specialty,payer_channel,revenue_ttm,revenue_prev_ttm,trx_ttm,calls_90d,months_since_activity,months_since_rx,decile
+A0001,Dr. Morgan 001,North,SMB,North District 2,N-SM-A,Primary Care,Cash,154.8,153.5,1315.6,6,2,2,3
+A0002,Dr. Morgan 002,South,SMB,South District 2,S-SM-A,Primary Care,Cash,54.3,47.8,461.3,2,1,1,1
+A0003,Dr. Morgan 003,South,SMB,South District 2,S-SM-A,Primary Care,Cash,222.5,194.9,1891.3,6,4,4,4
+A0004,Dr. Morgan 004,West,SMB,West District 2,W-SM-A,Primary Care,Cash,189.9,186.6,1614.3,7,1,1,4
+A0005,Dr. Morgan 005,South,SMB,South District 2,S-SM-A,Primary Care,Cash,39.0,44.1,331.3,9,0,0,1
+A0006,Dr. Morgan 006,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,2451.5,2793.1,20837.4,6,0,0,10
+A0007,Dr. Morgan 007,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,678.2,651.5,5765.1,16,0,0,8
+A0008,Dr. Morgan 008,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,479.8,472.7,4077.9,3,2,2,7
+A0009,Dr. Morgan 009,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,559.1,545.5,4752.6,5,1,1,7
+A0010,Dr. Morgan 010,South,SMB,South District 2,S-SM-A,Primary Care,Cash,291.0,301.8,2473.2,14,5,5,5
+A0011,Dr. Morgan 011,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,597.4,617.6,5078.2,5,1,1,8
+A0012,Dr. Morgan 012,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,744.8,669.5,6330.9,3,0,0,8
+A0013,Dr. Morgan 013,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,571.9,592.2,4861.2,4,0,0,7
+A0014,Dr. Morgan 014,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,871.3,878.5,7405.7,0,3,3,9
+A0015,Dr. Morgan 015,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,234.6,183.4,1994.0,19,0,0,5
+A0016,Dr. Morgan 016,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,1086.2,840.1,9232.5,2,0,0,9
+A0017,Dr. Morgan 017,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,958.7,879.1,8149.3,6,2,2,9
+A0018,Dr. Morgan 018,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,280.0,247.2,2380.1,12,2,2,5
+A0019,Dr. Morgan 019,North,SMB,North District 2,N-SM-A,Primary Care,Cash,101.7,124.9,864.3,1,4,4,2
+A0020,Dr. Morgan 020,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,899.8,823.3,7648.1,12,4,4,9
+A0021,Dr. Morgan 021,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,594.2,689.3,5050.3,13,8,8,8
+A0022,Dr. Morgan 022,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,271.9,291.4,2311.2,10,5,5,5
+A0023,Dr. Morgan 023,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,1255.7,1115.4,10673.3,9,1,1,10
+A0024,Dr. Morgan 024,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,469.3,499.9,3989.3,8,2,2,7
+A0025,Dr. Morgan 025,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,450.9,442.8,3832.9,7,2,2,7
+A0026,Dr. Morgan 026,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,286.2,341.8,2432.3,5,0,0,5
+A0027,Dr. Morgan 027,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,154.5,143.1,1313.2,6,0,0,3
+A0028,Dr. Morgan 028,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,1272.0,1097.5,10812.4,11,1,1,10
+A0029,Dr. Morgan 029,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,201.9,221.4,1716.2,15,6,6,4
+A0030,Dr. Morgan 030,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,876.1,805.6,7446.7,5,0,0,9
+A0031,Dr. Morgan 031,North,SMB,North District 2,N-SM-A,Primary Care,Cash,132.4,114.7,1125.5,4,1,1,3
+A0032,Dr. Morgan 032,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,2330.5,2807.2,19808.9,11,3,3,10
+A0033,Dr. Morgan 033,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,256.0,298.4,2176.0,0,0,0,5
+A0034,Dr. Morgan 034,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,378.2,397.1,3214.7,12,0,0,6
+A0035,Dr. Morgan 035,West,SMB,West District 2,W-SM-A,Primary Care,Cash,124.4,135.6,1057.1,8,1,1,3
+A0036,Dr. Morgan 036,North,SMB,North District 2,N-SM-A,Primary Care,Cash,182.8,153.4,1553.7,2,1,1,4
+A0037,Dr. Morgan 037,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,1866.6,1564.3,15866.1,6,2,2,10
+A0038,Dr. Morgan 038,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,610.4,644.4,5188.6,7,5,5,8
+A0039,Dr. Morgan 039,East,SMB,East District 2,E-SM-A,Primary Care,Cash,42.4,33.1,360.8,15,6,6,1
+A0040,Dr. Morgan 040,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,1178.6,1224.0,10018.3,8,5,5,9
+A0041,Dr. Morgan 041,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,1430.2,1500.7,12156.6,14,0,0,10
+A0042,Dr. Morgan 042,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,205.7,243.3,1748.4,1,0,0,4
+A0043,Dr. Morgan 043,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,556.9,556.5,4733.3,9,4,4,7
+A0044,Dr. Morgan 044,West,SMB,West District 2,W-SM-A,Primary Care,Cash,74.9,70.8,636.4,6,5,5,1
+A0045,Dr. Morgan 045,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,763.4,781.6,6488.5,6,3,3,8
+A0046,Dr. Morgan 046,North,SMB,North District 2,N-SM-A,Primary Care,Cash,289.9,283.0,2464.1,0,3,3,5
+A0047,Dr. Morgan 047,South,SMB,South District 2,S-SM-A,Primary Care,Cash,70.1,59.6,595.7,2,5,5,1
+A0048,Dr. Morgan 048,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,410.4,417.0,3488.3,7,4,4,6
+A0049,Dr. Morgan 049,West,SMB,West District 2,W-SM-A,Primary Care,Cash,189.4,189.3,1609.8,9,5,5,4
+A0050,Dr. Morgan 050,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,751.6,710.5,6389.0,12,5,5,8
+A0051,Dr. Morgan 051,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,578.1,691.4,4914.2,15,4,4,7
+A0052,Dr. Morgan 052,West,SMB,West District 2,W-SM-A,Primary Care,Cash,113.3,124.1,962.8,10,7,7,3
+A0053,Dr. Morgan 053,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,940.5,884.5,7994.0,0,4,4,9
+A0054,Dr. Morgan 054,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,599.1,557.7,5092.1,7,0,0,8
+A0055,Dr. Morgan 055,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,380.5,289.2,3234.3,13,2,2,6
+A0056,Dr. Morgan 056,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,277.7,303.7,2360.6,9,4,4,5
+A0057,Dr. Morgan 057,East,SMB,East District 2,E-SM-A,Primary Care,Cash,121.2,113.9,1030.5,4,2,2,3
+A0058,Dr. Morgan 058,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,360.9,414.1,3068.0,8,2,2,6
+A0059,Dr. Morgan 059,North,SMB,North District 2,N-SM-A,Primary Care,Cash,254.6,222.6,2164.3,17,2,2,5
+A0060,Dr. Morgan 060,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,129.1,130.3,1097.3,1,2,2,3
+A0061,Dr. Morgan 061,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,1251.7,1556.6,10639.4,1,1,1,10
+A0062,Dr. Morgan 062,South,SMB,South District 2,S-SM-A,Primary Care,Cash,122.1,109.1,1037.5,4,0,0,3
+A0063,Dr. Morgan 063,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,304.6,299.7,2589.0,12,0,0,6
+A0064,Dr. Morgan 064,West,SMB,West District 2,W-SM-A,Primary Care,Cash,52.5,48.2,446.5,10,0,0,1
+A0065,Dr. Morgan 065,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,291.4,255.4,2476.5,9,1,1,5
+A0066,Dr. Morgan 066,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,287.6,242.1,2445.0,5,2,2,5
+A0067,Dr. Morgan 067,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,1229.7,1102.4,10452.1,0,7,7,9
+A0068,Dr. Morgan 068,West,SMB,West District 2,W-SM-A,Primary Care,Cash,75.7,82.3,643.1,11,8,8,1
+A0069,Dr. Morgan 069,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,2105.1,1983.2,17892.9,9,1,1,10
+A0070,Dr. Morgan 070,West,SMB,West District 2,W-SM-A,Primary Care,Cash,102.7,91.9,873.4,0,1,1,2
+A0071,Dr. Morgan 071,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,1173.3,933.7,9972.9,11,1,1,9
+A0072,Dr. Morgan 072,North,SMB,North District 2,N-SM-A,Primary Care,Cash,106.6,88.2,905.9,10,5,5,2
+A0073,Dr. Morgan 073,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,689.0,542.7,5856.6,11,4,4,8
+A0074,Dr. Morgan 074,South,SMB,South District 2,S-SM-A,Primary Care,Cash,135.0,151.3,1147.2,12,0,0,3
+A0075,Dr. Morgan 075,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,812.9,931.2,6909.6,3,1,1,9
+A0076,Dr. Morgan 076,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,291.3,282.2,2475.9,0,0,0,5
+A0077,Dr. Morgan 077,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,211.3,245.3,1796.2,13,3,3,4
+A0078,Dr. Morgan 078,North,SMB,North District 2,N-SM-A,Primary Care,Cash,69.4,59.7,589.9,6,3,3,1
+A0079,Dr. Morgan 079,North,SMB,North District 2,N-SM-A,Primary Care,Cash,96.6,94.5,821.2,3,1,1,2
+A0080,Dr. Morgan 080,North,SMB,North District 2,N-SM-A,Primary Care,Cash,109.8,106.4,933.6,11,2,2,2
+A0081,Dr. Morgan 081,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,426.6,401.4,3625.9,12,3,3,7
+A0082,Dr. Morgan 082,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,877.8,831.7,7461.3,6,0,0,9
+A0083,Dr. Morgan 083,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,1392.6,1489.2,11836.9,15,3,3,10
+A0084,Dr. Morgan 084,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,146.3,156.5,1243.5,0,7,7,3
+A0085,Dr. Morgan 085,South,SMB,South District 2,S-SM-A,Primary Care,Cash,75.3,68.6,639.9,10,0,0,1
+A0086,Dr. Morgan 086,West,SMB,West District 2,W-SM-A,Primary Care,Cash,91.0,97.3,773.7,11,3,3,2
+A0087,Dr. Morgan 087,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,1069.1,916.6,9087.7,8,1,1,9
+A0088,Dr. Morgan 088,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,301.9,284.5,2566.5,0,0,0,6
+A0089,Dr. Morgan 089,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,571.5,555.4,4857.9,11,3,3,7
+A0090,Dr. Morgan 090,North,SMB,North District 2,N-SM-A,Primary Care,Cash,105.1,90.2,893.1,4,5,5,2
+A0091,Dr. Morgan 091,East,SMB,East District 2,E-SM-A,Primary Care,Cash,177.1,176.4,1505.4,3,0,0,3
+A0092,Dr. Morgan 092,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,1121.2,1005.2,9530.2,4,1,1,9
+A0093,Dr. Morgan 093,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,2222.9,2093.3,18894.6,8,0,0,10
+A0094,Dr. Morgan 094,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,2069.3,1576.2,17588.8,5,0,0,10
+A0095,Dr. Morgan 095,East,SMB,East District 2,E-SM-A,Primary Care,Cash,268.2,312.6,2280.0,2,1,1,5
+A0096,Dr. Morgan 096,North,SMB,North District 2,N-SM-A,Primary Care,Cash,99.8,94.1,848.1,11,5,5,2
+A0097,Dr. Morgan 097,East,SMB,East District 2,E-SM-A,Primary Care,Cash,65.8,58.6,559.1,7,1,1,1
+A0098,Dr. Morgan 098,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,596.9,499.1,5073.6,4,0,0,8
+A0099,Dr. Morgan 099,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,317.8,287.5,2701.2,11,0,0,6
+A0100,Dr. Morgan 100,West,SMB,West District 2,W-SM-A,Primary Care,Cash,61.8,59.6,525.5,4,0,0,1
+A0101,Dr. Morgan 101,West,SMB,West District 2,W-SM-A,Primary Care,Cash,71.8,68.6,610.4,0,0,0,1
+A0102,Dr. Morgan 102,North,SMB,North District 2,N-SM-A,Primary Care,Cash,87.8,80.9,746.6,5,7,7,2
+A0103,Dr. Morgan 103,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,192.7,178.7,1637.8,8,2,2,4
+A0104,Dr. Morgan 104,South,SMB,South District 2,S-SM-A,Primary Care,Cash,51.4,55.4,437.0,8,0,0,1
+A0105,Dr. Morgan 105,East,SMB,East District 2,E-SM-A,Primary Care,Cash,80.8,91.6,686.5,16,3,3,2
+A0106,Dr. Morgan 106,South,SMB,South District 2,S-SM-A,Primary Care,Cash,185.5,178.2,1576.7,9,2,2,4
+A0107,Dr. Morgan 107,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,378.8,312.1,3220.0,2,1,1,6
+A0108,Dr. Morgan 108,South,SMB,South District 2,S-SM-A,Primary Care,Cash,177.9,188.6,1512.1,9,1,1,3
+A0109,Dr. Morgan 109,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,436.6,444.8,3710.9,9,0,0,7
+A0110,Dr. Morgan 110,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,227.2,250.5,1931.0,15,0,0,4
+A0111,Dr. Morgan 111,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,630.5,649.9,5359.3,14,6,6,8
+A0112,Dr. Morgan 112,South,SMB,South District 2,S-SM-A,Primary Care,Cash,104.3,107.7,886.9,5,0,0,2
+A0113,Dr. Morgan 113,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,552.0,509.4,4691.6,8,0,0,7
+A0114,Dr. Morgan 114,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,350.1,313.6,2975.5,12,3,3,6
+A0115,Dr. Morgan 115,North,SMB,North District 2,N-SM-A,Primary Care,Cash,227.5,224.3,1933.9,11,4,4,4
+A0116,Dr. Morgan 116,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,385.5,392.4,3276.7,12,2,2,6
+A0117,Dr. Morgan 117,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,355.8,342.1,3024.6,2,0,0,6
+A0118,Dr. Morgan 118,North,SMB,North District 2,N-SM-A,Primary Care,Cash,88.3,92.7,750.4,12,4,4,2
+A0119,Dr. Morgan 119,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,240.9,236.5,2047.8,2,2,2,5
+A0120,Dr. Morgan 120,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,676.3,741.4,5748.7,5,6,6,8
+A0121,Dr. Morgan 121,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,193.0,210.6,1640.8,7,1,1,4
+A0122,Dr. Morgan 122,South,SMB,South District 2,S-SM-A,Primary Care,Cash,108.9,125.6,925.7,0,4,4,2
+A0123,Dr. Morgan 123,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,588.0,531.0,4998.2,11,4,4,8
+A0124,Dr. Morgan 124,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,756.5,664.5,6430.6,7,0,0,8
+A0125,Dr. Morgan 125,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,521.6,518.8,4433.8,4,5,5,7
+A0126,Dr. Morgan 126,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,304.3,305.9,2586.4,9,0,0,6
+A0127,Dr. Morgan 127,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,630.9,490.8,5362.7,6,0,0,8
+A0128,Dr. Morgan 128,South,SMB,South District 2,S-SM-A,Primary Care,Cash,201.6,134.2,1713.4,13,5,5,4
+A0129,Dr. Morgan 129,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,1034.0,1050.3,8789.1,11,3,3,9
+A0130,Dr. Morgan 130,East,SMB,East District 2,E-SM-A,Primary Care,Cash,102.4,79.5,870.5,10,2,2,2
+A0131,Dr. Morgan 131,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,244.4,223.8,2077.8,9,6,6,5
+A0132,Dr. Morgan 132,West,SMB,West District 2,W-SM-A,Primary Care,Cash,187.4,206.5,1592.8,1,2,2,4
+A0133,Dr. Morgan 133,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,279.0,265.4,2371.7,3,2,2,5
+A0134,Dr. Morgan 134,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,955.6,1024.1,8122.3,13,1,1,9
+A0135,Dr. Morgan 135,North,SMB,North District 2,N-SM-A,Primary Care,Cash,80.1,84.7,680.6,8,1,1,1
+A0136,Dr. Morgan 136,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,516.9,539.0,4393.9,2,6,6,7
+A0137,Dr. Morgan 137,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,1068.0,1080.1,9078.3,12,6,6,9
+A0138,Dr. Morgan 138,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,384.4,349.5,3267.6,4,4,4,6
+A0139,Dr. Morgan 139,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,1023.1,793.8,8696.5,2,3,3,9
+A0140,Dr. Morgan 140,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,576.7,552.4,4902.2,4,2,2,7
+A0141,Dr. Morgan 141,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,1526.3,1698.8,12973.5,14,6,6,10
+A0142,Dr. Morgan 142,West,SMB,West District 2,W-SM-A,Primary Care,Cash,80.1,90.4,680.6,15,3,3,1
+A0143,Dr. Morgan 143,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,372.4,361.8,3165.0,14,0,0,6
+A0144,Dr. Morgan 144,East,SMB,East District 2,E-SM-A,Primary Care,Cash,114.1,116.2,970.0,10,0,0,3
+A0145,Dr. Morgan 145,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,167.3,195.1,1421.9,0,0,0,3
+A0146,Dr. Morgan 146,East,SMB,East District 2,E-SM-A,Primary Care,Cash,110.0,89.3,935.2,9,0,0,2
+A0147,Dr. Morgan 147,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,373.5,336.2,3174.6,19,2,2,6
+A0148,Dr. Morgan 148,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,724.6,857.4,6159.2,0,3,3,8
+A0149,Dr. Morgan 149,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,630.8,635.8,5361.5,2,1,1,8
+A0150,Dr. Morgan 150,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,1034.6,823.1,8794.0,2,0,0,9
+A0151,Dr. Morgan 151,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,444.3,523.2,3776.1,6,7,7,7
+A0152,Dr. Morgan 152,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,1786.4,1782.7,15184.7,5,1,1,10
+A0153,Dr. Morgan 153,South,SMB,South District 2,S-SM-A,Primary Care,Cash,145.8,157.0,1239.3,14,2,2,3
+A0154,Dr. Morgan 154,South,SMB,South District 2,S-SM-A,Primary Care,Cash,76.3,76.1,648.8,8,0,0,1
+A0155,Dr. Morgan 155,South,SMB,South District 2,S-SM-A,Primary Care,Cash,122.3,129.5,1039.4,13,1,1,3
+A0156,Dr. Morgan 156,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,307.6,277.5,2614.8,0,0,0,6
+A0157,Dr. Morgan 157,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,945.8,964.9,8038.9,14,0,0,9
+A0158,Dr. Morgan 158,West,SMB,West District 2,W-SM-A,Primary Care,Cash,105.1,125.7,893.7,1,0,0,2
+A0159,Dr. Morgan 159,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,1166.3,1215.7,9913.4,5,7,7,9
+A0160,Dr. Morgan 160,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,322.4,301.1,2740.7,4,4,4,6
+A0161,Dr. Morgan 161,South,SMB,South District 2,S-SM-A,Primary Care,Cash,45.9,51.1,389.9,6,0,0,1
+A0162,Dr. Morgan 162,East,SMB,East District 2,E-SM-A,Primary Care,Cash,122.1,110.8,1038.1,9,4,4,3
+A0163,Dr. Morgan 163,South,SMB,South District 2,S-SM-A,Primary Care,Cash,197.7,187.6,1680.2,10,0,0,4
+A0164,Dr. Morgan 164,North,SMB,North District 2,N-SM-A,Primary Care,Cash,109.6,111.4,931.4,2,0,0,2
+A0165,Dr. Morgan 165,West,SMB,West District 2,W-SM-A,Primary Care,Cash,224.4,227.7,1907.0,3,4,4,4
+A0166,Dr. Morgan 166,South,SMB,South District 2,S-SM-A,Primary Care,Cash,106.3,106.6,903.7,7,2,2,2
+A0167,Dr. Morgan 167,North,SMB,North District 2,N-SM-A,Primary Care,Cash,145.6,134.9,1237.4,13,2,2,3
+A0168,Dr. Morgan 168,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,1689.9,1852.4,14364.0,0,0,0,10
+A0169,Dr. Morgan 169,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,501.4,402.8,4261.7,16,0,0,7
+A0170,Dr. Morgan 170,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,797.0,539.0,6774.8,1,5,5,8
+A0171,Dr. Morgan 171,South,SMB,South District 2,S-SM-A,Primary Care,Cash,111.4,96.1,946.9,11,1,1,3
+A0172,Dr. Morgan 172,North,SMB,North District 2,N-SM-A,Primary Care,Cash,62.0,79.5,526.9,9,2,2,1
+A0173,Dr. Morgan 173,North,SMB,North District 2,N-SM-A,Primary Care,Cash,75.2,65.8,639.1,15,7,7,1
+A0174,Dr. Morgan 174,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,530.3,573.4,4507.7,5,3,3,7
+A0175,Dr. Morgan 175,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,1303.3,1159.8,11078.2,9,1,1,10
+A0176,Dr. Morgan 176,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,245.0,261.8,2082.8,10,0,0,5
+A0177,Dr. Morgan 177,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,1275.5,1177.4,10842.1,3,8,8,10
+A0178,Dr. Morgan 178,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,350.2,344.5,2976.4,8,0,0,6
+A0179,Dr. Morgan 179,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,495.8,562.7,4214.1,7,3,3,7
+A0180,Dr. Morgan 180,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,1581.3,1707.6,13440.8,10,8,8,10
+A0181,Dr. Morgan 181,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,341.4,316.0,2901.5,0,0,0,6
+A0182,Dr. Morgan 182,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,413.7,330.7,3516.2,10,4,4,6
+A0183,Dr. Morgan 183,North,SMB,North District 2,N-SM-A,Primary Care,Cash,77.5,69.8,658.6,7,3,3,1
+A0184,Dr. Morgan 184,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,578.7,563.0,4919.4,9,3,3,8
+A0185,Dr. Morgan 185,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,684.1,825.5,5814.6,2,4,4,8
+A0186,Dr. Morgan 186,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,711.7,625.5,6049.1,8,2,2,8
+A0187,Dr. Morgan 187,East,SMB,East District 2,E-SM-A,Primary Care,Cash,82.5,83.5,701.5,14,1,1,2
+A0188,Dr. Morgan 188,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,1360.4,1291.3,11563.6,9,1,1,10
+A0189,Dr. Morgan 189,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,228.9,183.4,1945.9,6,3,3,4
+A0190,Dr. Morgan 190,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,546.0,626.6,4641.4,2,2,2,7
+A0191,Dr. Morgan 191,North,SMB,North District 2,N-SM-A,Primary Care,Cash,103.8,100.2,882.3,13,3,3,2
+A0192,Dr. Morgan 192,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,284.0,291.0,2414.1,0,6,6,5
+A0193,Dr. Morgan 193,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,472.9,349.2,4019.8,0,1,1,7
+A0194,Dr. Morgan 194,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,203.4,191.2,1728.5,15,6,6,4
+A0195,Dr. Morgan 195,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,418.6,344.4,3558.3,0,5,5,7
+A0196,Dr. Morgan 196,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,234.5,231.6,1993.4,14,1,1,4
+A0197,Dr. Morgan 197,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,549.6,622.3,4671.8,0,0,0,7
+A0198,Dr. Morgan 198,North,SMB,North District 2,N-SM-A,Primary Care,Cash,84.2,78.1,715.6,8,8,8,2
+A0199,Dr. Morgan 199,West,SMB,West District 2,W-SM-A,Primary Care,Cash,122.7,124.6,1043.0,5,4,4,3
+A0200,Dr. Morgan 200,East,SMB,East District 2,E-SM-A,Primary Care,Cash,181.0,184.9,1538.8,11,7,7,3
+A0201,Dr. Morgan 201,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,363.5,312.8,3089.8,5,4,4,6
+A0202,Dr. Morgan 202,North,SMB,North District 2,N-SM-A,Primary Care,Cash,77.5,86.3,658.8,0,1,1,1
+A0203,Dr. Morgan 203,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,202.6,181.0,1721.8,3,0,0,4
+A0204,Dr. Morgan 204,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,290.2,281.3,2466.8,12,6,6,5
+A0205,Dr. Morgan 205,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,346.7,356.4,2947.3,8,4,4,6
+A0206,Dr. Morgan 206,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,844.9,853.9,7181.6,6,3,3,9
+A0207,Dr. Morgan 207,West,SMB,West District 2,W-SM-A,Primary Care,Cash,75.3,57.2,640.4,11,3,3,1
+A0208,Dr. Morgan 208,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,240.5,230.1,2044.6,13,0,0,5
+A0209,Dr. Morgan 209,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,375.0,341.4,3187.3,10,3,3,6
+A0210,Dr. Morgan 210,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,1257.2,1260.6,10686.6,7,3,3,10
+A0211,Dr. Morgan 211,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,882.0,880.1,7497.1,0,4,4,9
+A0212,Dr. Morgan 212,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,222.6,199.3,1892.5,1,1,1,4
+A0213,Dr. Morgan 213,North,SMB,North District 2,N-SM-A,Primary Care,Cash,88.1,81.2,749.0,16,2,2,2
+A0214,Dr. Morgan 214,West,SMB,West District 2,W-SM-A,Primary Care,Cash,251.6,267.1,2138.4,5,0,0,5
+A0215,Dr. Morgan 215,North,SMB,North District 2,N-SM-A,Primary Care,Cash,90.6,81.7,770.0,2,1,1,2
+A0216,Dr. Morgan 216,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,374.4,298.3,3182.5,7,0,0,6
+A0217,Dr. Morgan 217,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,1611.5,1648.4,13698.1,9,0,0,10
+A0218,Dr. Morgan 218,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,1411.0,1273.3,11993.2,11,1,1,10
+A0219,Dr. Morgan 219,West,SMB,West District 2,W-SM-A,Primary Care,Cash,83.7,66.5,711.7,4,2,2,2
+A0220,Dr. Morgan 220,North,SMB,North District 2,N-SM-A,Primary Care,Cash,213.4,195.9,1813.7,17,0,0,4
+A0221,Dr. Morgan 221,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,602.7,534.9,5122.7,13,2,2,8
+A0222,Dr. Morgan 222,North,SMB,North District 2,N-SM-A,Primary Care,Cash,57.0,59.7,484.3,2,0,0,1
+A0223,Dr. Morgan 223,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,975.7,1030.4,8293.3,11,8,8,9
+A0224,Dr. Morgan 224,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,2013.2,2407.5,17112.0,5,7,7,10
+A0225,Dr. Morgan 225,East,SMB,East District 2,E-SM-A,Primary Care,Cash,301.1,292.7,2559.6,3,4,4,5
+A0226,Dr. Morgan 226,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,1471.1,1410.7,12504.2,17,0,0,10
+A0227,Dr. Morgan 227,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,220.2,190.5,1871.9,0,0,0,4
+A0228,Dr. Morgan 228,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,611.8,603.4,5200.4,5,1,1,8
+A0229,Dr. Morgan 229,North,SMB,North District 2,N-SM-A,Primary Care,Cash,172.7,152.7,1468.0,10,3,3,3
+A0230,Dr. Morgan 230,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,562.7,584.5,4783.3,16,4,4,7
+A0231,Dr. Morgan 231,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,258.0,212.9,2193.0,13,1,1,5
+A0232,Dr. Morgan 232,South,SMB,South District 2,S-SM-A,Primary Care,Cash,135.4,146.3,1151.2,4,0,0,3
+A0233,Dr. Morgan 233,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,205.3,246.9,1745.4,3,1,1,4
+A0234,Dr. Morgan 234,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,1777.4,1261.9,15107.7,12,0,0,10
+A0235,Dr. Morgan 235,North,SMB,North District 2,N-SM-A,Primary Care,Cash,297.8,293.3,2531.3,3,0,0,5
+A0236,Dr. Morgan 236,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,1038.3,1061.8,8825.2,6,7,7,9
+A0237,Dr. Morgan 237,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,679.6,714.1,5776.7,7,1,1,8
+A0238,Dr. Morgan 238,North,SMB,North District 2,N-SM-A,Primary Care,Cash,46.1,41.0,392.1,13,1,1,1
+A0239,Dr. Morgan 239,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,477.8,510.3,4061.0,13,6,6,7
+A0240,Dr. Morgan 240,East,SMB,East District 2,E-SM-A,Primary Care,Cash,138.4,143.0,1176.7,2,0,0,3
