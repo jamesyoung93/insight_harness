@@ -1,193 +1,229 @@
 # Insight Harness
 
-A Streamlit decision-intelligence workbench built on a governed semantic layer:
-question triage → deterministic resolution against a metric registry →
-deterministic engines → computed divergence & caveats → provenance-stamped
-answer artifacts, with a standing accuracy record where abstention and
-reproducibility are scored behaviors.
+Insight Harness is a Streamlit decision-intelligence workbench for a synthetic
+pharma commercial dataset. It starts with persona-specific KPI tiles, then lets
+the user interrogate the same governed metrics through natural language,
+monitoring, a top-three digest, and registered causal designs.
+
+The trust boundary is simple: a language model may translate a question or
+rephrase a digest headline, but it never computes an answer. Registry-validated
+intents enter deterministic engines, and every result is exported as a
+provenance-stamped artifact with its source, variant, data version, code, tier,
+and stable hash.
 
 > [!IMPORTANT]
-> **Bring your own model credentials.** No API key is included or proxied. The
-> app works without one, but only through its bounded built-in parser. To enable
-> flexible language-model translation, enter your own Anthropic API key in the
-> sidebar or configure `ANTHROPIC_API_KEY` in a deployment you control. The model
-> translates intent only; governed deterministic engines still compute every
-> answer.
+> All bundled records and effects are deterministic synthetic demo data. The
+> dataset is monthly, not weekly, and contains no patient, prescriber, or other
+> real-world data. Do not use this repository to make clinical or production
+> commercial decisions without replacing and validating the full data contract.
 
-## Run
+## Quick start
+
+Python 3.12 is the CI runtime.
 
 ```bash
-pip install -r requirements-dev.txt
-python data/generate_demo_data.py   # regenerates the dataset
-streamlit run app.py
-pytest                              # headless UI + harness suite
+python -m venv .venv
+# PowerShell: .venv\Scripts\Activate.ps1
+# macOS/Linux: source .venv/bin/activate
+python -m pip install -c constraints.txt -r requirements-dev.txt
+python data/generate_demo_data.py
+python -m streamlit run app.py
 ```
 
-### Enable language-model translation (optional)
+Run the verification suite separately:
 
-Starting the app does not give it model access. To enable model-backed question
-translation, either:
+```bash
+python -m compileall -q app.py harness views tests
+python -m pytest -q
+```
 
-- enter your Anthropic API key in the app's sidebar for the current Streamlit
-  session; or
-- copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` and add
-  your key. The real secrets file is ignored by Git.
+The app is fully usable without an API key. In that mode, questions use the
+bounded rule parser and digest cards use deterministic templates.
 
-Without a key, the analytical pages still work, but questions are interpreted
-by the narrower built-in parser. The model-backed feature is translation and
-orchestration, not answer generation. Only enter a key in a deployment you
-trust.
+## What is implemented
 
-## Deploy on Streamlit Community Cloud
-
-This repository is ready to deploy from its root: `app.py` is the entrypoint,
-`requirements.txt` declares the Python dependencies, `.streamlit/config.toml`
-contains the theme, and the generated evaluation data is committed with the
-application.
-
-1. Connect the GitHub repository to [Streamlit Community Cloud](https://share.streamlit.io/).
-2. Create an app using branch `main` and entrypoint `app.py`.
-3. Use Python 3.12 in Advanced settings.
-4. Model-backed translation is disabled until the deployment is given an API
-   credential. To enable it, add your own root-level secret in Advanced settings
-   rather than committing it:
-
-   ```toml
-   ANTHROPIC_API_KEY = "your-key"
-   ```
-
-   If you omit the secret, the deployed app remains usable in bounded
-   built-in-parser mode.
-
-Root-level Streamlit secrets are available as environment variables, which is
-the interface used by this app. See Streamlit's official guides to
-[file organisation](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/file-organization),
-[deployment](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/deploy),
-and [secrets management](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/secrets-management).
-
-## Pages
-
-| Page | What it does |
+| Surface | Capability |
 |---|---|
-| **Home** | Five live, pipeline-backed KPI tiles with shared window, comparison, and region controls; compact provenance and material-fork disclosure; one-click breakdown/open actions; plus natural-language exploration with session history, scoped refusals, artifact downloads, correction telemetry, and Watch actions |
-| **Monitoring** | A Watched section (user-pinned metric+scope, evaluated with the same materiality logic) plus an impact-ranked anomaly feed; every row drills through to its decomposition with one click |
-| **Causal Studio** | Attribution as a review surface: registered events, difference-in-differences proposals rendered as a structured brief (design → computed assumption checks → estimate vs. naive read → variant sensitivity), and an analyst sign-off that stamps the artifact and is recorded in telemetry |
-| **Semantic Layer** | Read-only registry browsing for everyone (metrics, variants with owners, sources with known limitations) plus an admin expander that edits the materiality threshold and default variants — persisted to `data/governance_config.json`, reloaded by the layer, every change logged to `data/governance_log.jsonl` |
-| **Reliability** | The accuracy record: a standing question set with independently computed expected answers, run twice per question with hash-equality reproducibility, correct-refusal scoring, correction rate from telemetry, trends persisted to `data/eval_history.jsonl`, and session counters for language-model translations |
-| **How answers are produced** | User-voiced help: what the tiers mean, how to read the provenance stamp, when to trust a number outright |
+| **Home** | Persona defaults; live KPI, diagnostic, and retrieval tiles; R3M/R6M/R12M and MoM/QoQ/YoY controls; one scope selector spanning region, district, territory, specialty, and payer channel; governed source/variant overrides; material-fork disclosure; Watch, Open, Break down, and JSON download actions; natural-language exploration below the tiles |
+| **Digest** | Three deterministic signals ranked from movements, session watches, material source/definition forks, and registered-event overlap; scope precedence, novelty, and one item per metric family; artifact downloads and resolution-preserving drill-through; optional validated model phrasing |
+| **Monitoring** | Session-owned watched insights plus an impact-ranked anomaly feed, with breakdown drill-through that retains the saved comparison and resolution context |
+| **Causal Studio** | Difference-in-differences proposals for three registered synthetic events, including treated/control scopes, computed pre-trend and sensitivity checks, and caveats; analyst sign-off requires administrator-token authentication and adds a provenance stamp without promoting the Hypothesis tier |
+| **Semantic Layer** | Public read-only metric and source registries; server-token-gated administration of the materiality threshold and default variants; atomic configuration writes with embedded audit history and a synced local JSONL mirror |
+| **Reliability** | A pharma-only independent golden set covering values, ratios, retrieval, decomposition, causal effects, divergence, refusals, and source/data contracts; every case runs twice for hash reproducibility, while the broader test suite enforces watches and tile parity |
+| **How answers are produced** | In-product explanation of tiers, provenance, and the authority boundary between translation and computation |
 
-## Architecture
+### Persona presets
 
+The five presets are Sales Rep, District Manager, Brand Marketing, Market
+Access, and Executive. Sales Rep starts at territory scope, District Manager at
+district scope, and the other presets at national scope. Each preset supplies a
+tile set, scope, window, comparison basis, and digest scope.
+
+Tile add/remove/reorder choices, saved defaults, watches, and public digest
+history are owned by the current Streamlit session. They are intentionally not
+written to a shared profile file, so one anonymous viewer cannot change another
+viewer's workspace. They expire with the session; production persistence needs
+authenticated user identity and an external store.
+
+## Governed pharma contract
+
+The registry exposes these monthly metrics:
+
+- TRx with units, gross-dollar, and payer-normalized variants
+- NRx and NBRx
+- TRx market share, calculated as brand TRx divided by market TRx
+- details delivered, call plan, and call-plan attainment
+- samples dropped, speaker attendance, and new writers
+
+The registered dimensions are `territory`, `district`, `region`, `specialty`,
+and `payer_channel`. The HCP universe also carries derived decile, trailing Rx,
+recency, and 90-day activity fields for governed retrieval such as whitespace
+HCPs.
+
+The two source products deliberately disagree in controlled ways:
+
+- `source_a` — **Direct/DDD + specialty pharmacy feed**, at one
+  `account_id` × `month` row, covering prescriptions and field activity with no
+  reporting lag.
+- `source_b` — **Projected retail panel**, aggregated by month and the five
+  registered dimensions, with a one-month lag, registered regional projection
+  factors, and an early-history restatement. It does not claim HCP or
+  field-activity grain.
+
+Source comparisons use the common available window. Missing panel coverage is
+reported as a coverage gap rather than misclassified as a value fork. Ratio
+metrics are aggregated from numerator and denominator; an undefined denominator
+stays undefined rather than becoming a false zero. Ratio decomposition is
+deliberately refused because no governed share-decomposition method is
+registered.
+
+Three synthetic events are registered with exact treated and control scopes:
+
+- speaker-program launch in two East territories, with matched North territory
+  controls;
+- South Medicare Part D formulary win, with North/East Medicare Part D
+  controls; and
+- competitor launch in West Cardiology, with Cardiology controls from the
+  other three regions.
+
+`data/ground_truth.json` records the injected effects, source pathologies,
+grains, and invariants used by the independent evaluation path.
+
+## Answer pipeline
+
+```text
+question or saved spec
+  -> triage / validated model translation       harness/triage.py
+  -> governed source + variant resolution       harness/semantic_layer.py
+  -> deterministic engine                       harness/engines/
+  -> common-window divergence + caveats         harness/services.py
+  -> provenance-stamped AnswerArtifact          harness/provenance.py
 ```
-question ─▶ TRIAGE (classify + parse)          harness/triage.py
-              │  Retrieval / Descriptive / Diagnostic / Causal / Predictive / OOS
-              │  windows, comparison bases, multi-value filters
-              ▼
-          RESOLVE (source + variant)           harness/semantic_layer.py
-              │  governed defaults (admin-configurable), disclosed; overrides labeled
-              ▼
-          ENGINE (deterministic)               harness/engines/
-              │  descriptive · retrieval · decomposition · causal advisor
-              ▼
-          DIVERGENCE + CAVEATS                 harness/services.py
-              │  engine-aware computed forks; registry-metadata caveats
-              ▼
-          ANSWER ARTIFACT                      harness/provenance.py
-                 code · data version · result hash · tier · stamp · JSON export
+
+Question classes are Retrieval, Descriptive, Diagnostic, Causal, Predictive,
+and Out of scope. Predictive requests are refused because the registry contains
+no governed forecasting model. Causal requests execute only when they match a
+registered event and preserve its treated population; otherwise the system
+returns a scoped reframe.
+
+A tile is an immutable saved-question specification, not a separate dashboard
+calculation. Tile rendering, Ask, Monitoring drill-through, and digest
+drill-through all enter the same answer pipeline. Cache identity includes the
+materialized spec, effective scope, governance configuration, and data version.
+
+## Optional language-model features
+
+Users may enter their own Anthropic API key in the sidebar for the current
+session. A deployment-owned `ANTHROPIC_API_KEY` is disabled for anonymous use
+unless the operator also sets:
+
+```text
+INSIGHT_HARNESS_ALLOW_PUBLIC_LLM=true
 ```
 
-Design decisions worth knowing:
+The deployment controls an allowlist of model IDs and a per-session model-call
+limit. Model translation is registry-validated before execution; invalid output
+falls back to rules. Digest rewriting receives a bounded fact payload and is
+accepted only if metric, scope, entities, direction, units, numeric claims, and
+non-causal wording validate exactly. The deterministic template wins on any
+failure.
 
-- **The LLM only translates.** By default the parser is deterministic rules
-  (`harness/triage.py`). Supplying an Anthropic API key (sidebar, or
-  `ANTHROPIC_API_KEY`) swaps in a model behind the identical `Intent` contract
-  (`harness/llm_translator.py`). Every translation is validated against the
-  registry — unknown metrics, dimension values, events, windows, or bases are
-  rejected and the pipeline falls back to rules, visibly, with the raw error
-  preserved in the artifact JSON. Translation latency is recorded in the stamp.
-- **Answers are artifacts, not strings.** `harness/provenance.py` — every
-  answer carries the code executed, resolved source/variant, data version,
-  tier, and a stable result hash, and exports as JSON. Reproducibility is
-  enforced, not hoped for. Drill-through steps are real questions, so every
-  step of the notice → quantify → localize → attribute loop reproduces.
-- **Caveats are computed, not narrated** — built from registry metadata (lag,
-  restatements, variant existence, metric substitutions) and calculated
-  sensitivity, never free text.
-- **Divergence is engine-aware.** Alternate sources/variants are recomputed
-  the same way the answer was (level vs level, delta vs delta, same window);
-  a fork that can't be recomputed like-for-like is skipped, never approximated.
-  Causal designs disclose variant forks via their computed sensitivity instead.
-- **Refusals carry reframes.** Predictive questions, unmappable metrics,
-  causal questions without a registered event, and out-of-range windows are
-  declined with computed re-askable questions — refusing correctly is a scored
-  behavior on the Reliability page.
-- **Governance changes are provenance.** Admin edits to materiality/default
-  variants are validated, persisted to a small JSON config, and logged with
-  timestamps; the golden set's expected answers follow the configured defaults
-  so the accuracy record stays valid under configuration changes.
+See [SECURITY.md](SECURITY.md) before enabling model access or governance writes
+on a public deployment.
 
-## Dataset
+Feedback question identifiers are keyed HMACs rather than plain hashes. By
+default, a random per-process key prevents identifiers from being correlated
+across restarts. Operators that need stable, controlled correlation may set
+`INSIGHT_HARNESS_TELEMETRY_HASH_KEY`; treat that value as a secret and define a
+retention purpose before enabling it.
 
-`data/generate_demo_data.py` generates the dataset and documents its contract:
-baked-in causal effects with true magnitudes (exported to `ground_truth.json`
-so the causal advisor can be scored), source pathologies (bias, lag,
-restatements) so divergence detection has real work to do, and metric variants
-owned by different functions. To use your own data, replace the CSVs, extend
-`ground_truth.json` and `pipeline.GOLDEN`, and re-run the Reliability check.
+## Synthetic data and reproducibility
 
-## Tests
+`data/generate_demo_data.py` uses seed `42` to produce:
 
-`tests/` runs headless via `pytest`:
+- 240 synthetic HCPs across 24 months (`2024-07` through `2026-06`);
+- 5,760 account-month rows in source A;
+- 1,104 aggregated, one-month-lagged panel rows in source B; and
+- an HCP table derived and reconciled from source A.
 
-- `test_ui.py` — `streamlit.testing.v1.AppTest`: every page renders, every
-  question class round-trips, drill-through navigation, downloads, history
-  replay, sign-off, watchlists, admin, and the accuracy check through the UI.
-- `test_copy_audit.py` — AST-based scan of every UI string literal for
-  self-narration and phase language.
-- `test_golden.py` / `test_capabilities.py` / `test_harness.py` — the golden
-  set (100% pass / 100% reproducible, always), windows, bases, multi-filters,
-  watchlists, governance, translator validation, divergence unit-consistency.
+Generated CSV files use explicit UTF-8/LF output. CI regenerates all four data
+artifacts and fails if they differ from the committed benchmark:
 
-The suite is hermetic: it strips `ANTHROPIC_API_KEY` and redirects every
-mutable state file (`feedback_log.jsonl`, `watchlist.json`,
-`governance_config.json`, `governance_log.jsonl`, `eval_history.jsonl`) to a
-temp dir.
-
-## Files
-
+```bash
+python data/generate_demo_data.py
+git diff --exit-code -- data/accounts.csv data/fact_source_a.csv \
+  data/fact_source_b.csv data/ground_truth.json
 ```
-app.py                          router + chrome
+
+The in-app label “Daily digest” describes the intended workflow, not fake daily
+rotation. With the committed monthly snapshot, the digest changes only when its
+data version, governance, persona/scope, watches, or identity-scoped history
+changes. A true morning digest requires a real refreshed feed.
+
+## Evaluation and CI
+
+The test suite includes deterministic engine tests, data-contract and golden-set
+checks, tile/spec/cache parity, saved-insight migrations, session isolation,
+digest ranking and narrator attacks, provenance hashing, runtime policy, and
+headless Streamlit page flows.
+
+GitHub Actions runs on pull requests and pushes to `main` with read-only
+repository permissions. It resolves the declared dependency ranges against the
+tested direct-version pins in `constraints.txt`, checks the dependency graph,
+regenerates the benchmark, compiles the app, and runs the full test suite.
+
+For operational configuration, state-file behavior, deployment, and the release
+checklist, see [docs/OPERATIONS.md](docs/OPERATIONS.md).
+
+## Repository map
+
+```text
+app.py                          Streamlit router and runtime-policy controls
 views/
-  home.py                       governed KPI band, shared controls, tile actions
-  common.py                     shared answer renderer: chips, stamp, waterfall,
-                                causal brief, refusal panel, artifact actions
-  ask.py                        question box, history rail, suggestions
-  monitoring.py                 watched scopes + anomaly feed, drill-through
-  causal_studio.py              design proposals + analyst sign-off
-  registry.py                   semantic layer browser + governance admin
-  reliability.py                accuracy record + run history + telemetry
-  help_page.py                  "How answers are produced"
+  home.py                       persona tile band and exploration workspace
+  digest.py                     deterministic top-three digest
+  monitoring.py                 session watches and anomaly feed
+  causal_studio.py              registered causal design proposals
+  registry.py                   registry browser and authenticated governance
+  reliability.py                golden-set accuracy record
+  common.py                     artifact rendering and drill-through helpers
 harness/
-  semantic_layer.py             sources, metrics + variants, events, resolution,
-                                governance config
-  triage.py                     classification + intent parsing (rule parser),
-                                windows, bases, multi-value filters
-  llm_translator.py             optional LLM drop-in behind the same contract
-  tiles.py                      immutable tile registry + canonical questions
-  pipeline.py                   orchestrator + golden set + run history
-  provenance.py                 AnswerArtifact: code, hashes, tiers, JSON export
-  services.py                   divergence, caveats, anomaly feed, watchlists,
-                                telemetry
-  engines/
-    basic.py                    descriptive (windows, bases) + retrieval
-    decomposition.py            contribution analysis (bases, waterfall data)
-    causal_advisor.py           DiD design proposals with computed checks
+  semantic_layer.py             metrics, dimensions, sources, events, governance
+  tiles.py / tile_runtime.py     saved-question specs, identity, and execution
+  saved_insights.py             schema-migrated session watch/tile store
+  triage.py / llm_translator.py rule and optional model translation
+  engines/                      descriptive, retrieval, decomposition, causal
+  services.py                   divergence, monitoring, feedback, caveats
+  digest.py / digest_store.py   ranking, artifacts, and history stores
+  digest_narrator.py            optional bounded/validated phrasing
+  pipeline.py                   orchestration and independent golden set
+  provenance.py                 stable answer artifacts and hashes
+  runtime_policy.py             model, quota, privacy, and admin policy
 data/
-  generate_demo_data.py         dataset generator; doubles as the data contract
-  ground_truth.json             documented true effects and data issues
-tests/                          pytest suite (headless AppTest + harness units)
+  generate_demo_data.py         deterministic pharma benchmark generator
+  ground_truth.json             independent event/source/data contract
+  fact_source_a.csv             account-month system-of-record facts
+  fact_source_b.csv             aggregated projected panel
+  accounts.csv                  derived HCP universe
+tests/                          unit, contract, golden, and AppTest coverage
 ```
-
-Note: `harness/__init__.py` contains environment hardening (thread stack size,
-pyarrow thread pinning) needed in restricted sandboxes; it is harmless on a
-normal workstation. Keep it.

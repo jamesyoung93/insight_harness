@@ -21,10 +21,14 @@ import os
 from . import semantic_layer as sl
 from . import triage
 
-DEFAULT_MODEL = "claude-sonnet-4-6"
+DEFAULT_MODEL = "claude-sonnet-5"
 
 VALID_CLASSES = {triage.RETRIEVAL, triage.DESCRIPTIVE, triage.DIAGNOSTIC,
                  triage.CAUSAL, triage.PREDICTIVE, triage.OUT_OF_SCOPE}
+RESPONSE_KEYS = {
+    "question_class", "metric", "filters", "trend", "dim_breakdown",
+    "event_id", "template", "window", "compare_basis", "reason",
+}
 
 
 class TranslationError(Exception):
@@ -43,7 +47,10 @@ def _registry_context() -> str:
     metrics = {mid: {"label": m["label"],
                      "synonyms": [k for k, v in sl.METRIC_KEYWORDS.items() if v == mid]}
                for mid, m in sl.METRICS.items()}
-    events = {eid: {"name": e["name"], "start": e["start"], "keywords": e["keywords"]}
+    events = {eid: {"name": e["name"], "start": e["start"],
+                    "scope": e["scope"], "metrics": e["metrics"],
+                    "default_metric": e.get("default_metric", e["metrics"][0]),
+                    "keywords": e["keywords"]}
               for eid, e in sl.EVENTS.items()}
     return json.dumps({"metrics": metrics, "dimensions": dims, "events": events}, indent=1)
 
@@ -53,9 +60,10 @@ deterministic analytics engine. You do NOT answer the question. Respond with \
 ONLY a JSON object, no prose, no markdown fences, with exactly these keys:
 
 question_class: one of "Retrieval" | "Descriptive" | "Diagnostic" | "Causal" | "Predictive" | "Out of scope"
-metric: a metric id from the registry, or null. For Causal questions about a registered event, set the metric the question asks about, or "revenue" if none is stated.
+metric: a metric id from the registry, or null. For Causal questions about a registered event, set the metric the question asks about; if none is stated, use that event's registered default_metric.
 filters: object mapping dimension name -> ONE registry value or an ARRAY of registry values (empty object if none)
 trend: true if the question asks for a time series / by-month view, else false
+dim_breakdown: for Diagnostic only, the dimension explicitly requested, or null
 event_id: an event id from the registry if the question asks about the causal impact of that specific event, else null
 template: for Retrieval only, "whitespace" (high-value accounts with no recent activity) or "top_accounts", else null
 window: null, or an explicit time window the question names: {"kind":"last_n","n":<int>} | {"kind":"quarter","q":<1-4>,"year":<yyyy>} | {"kind":"month","month":<1-12>,"year":<yyyy>}
@@ -87,7 +95,7 @@ def translate(question: str, api_key: str | None = None,
         raise TranslationError("anthropic SDK not installed (pip install anthropic)") from e
 
     try:
-        client = anthropic.Anthropic(api_key=key)
+        client = anthropic.Anthropic(api_key=key, timeout=15.0, max_retries=1)
         msg = client.messages.create(
             model=model, max_tokens=500, temperature=0,
             system=SYSTEM + _registry_context(),
@@ -107,6 +115,17 @@ def _validate(question: str, raw: str) -> tuple[triage.Intent, dict]:
         d = json.loads(cleaned)
     except json.JSONDecodeError as e:
         raise TranslationError(f"model returned non-JSON: {raw[:120]}", kind="rejected") from e
+    if not isinstance(d, dict):
+        raise TranslationError("model response must be one JSON object", kind="rejected")
+    if set(d) != RESPONSE_KEYS:
+        missing, extra = sorted(RESPONSE_KEYS - set(d)), sorted(set(d) - RESPONSE_KEYS)
+        raise TranslationError(
+            f"response keys must match the bounded contract; missing={missing}, extra={extra}",
+            kind="rejected")
+    if not isinstance(d["trend"], bool):
+        raise TranslationError("trend must be a JSON boolean", kind="rejected")
+    if not isinstance(d["reason"], str):
+        raise TranslationError("reason must be a string", kind="rejected")
 
     qc = d.get("question_class")
     if qc not in VALID_CLASSES:
@@ -137,6 +156,10 @@ def _validate(question: str, raw: str) -> tuple[triage.Intent, dict]:
     template = d.get("template")
     if template not in (None, "whitespace", "top_accounts"):
         raise TranslationError(f"invalid template: {template!r}", kind="rejected")
+    if qc == triage.RETRIEVAL and template is None:
+        raise TranslationError("Retrieval intents require a registered template", kind="rejected")
+    if qc != triage.RETRIEVAL and template is not None:
+        raise TranslationError("templates are valid only for Retrieval intents", kind="rejected")
 
     window_spec = d.get("window")
     window = None
@@ -158,11 +181,26 @@ def _validate(question: str, raw: str) -> tuple[triage.Intent, dict]:
     if basis not in (None, "prior_month", "prior_quarter", "yoy"):
         raise TranslationError(f"invalid compare_basis: {basis!r}", kind="rejected")
 
+    dim_breakdown = d.get("dim_breakdown")
+    if dim_breakdown is not None and dim_breakdown not in sl.DIMENSIONS:
+        raise TranslationError(f"invalid dim_breakdown: {dim_breakdown!r}", kind="rejected")
+    if (qc == triage.DIAGNOSTIC) != (dim_breakdown is not None):
+        raise TranslationError(
+            "Diagnostic intents require dim_breakdown and no other class may set it",
+            kind="rejected")
+
     # enforce the same guardrails the rule parser enforces
     if qc in (triage.DESCRIPTIVE, triage.DIAGNOSTIC) and metric is None:
         raise TranslationError("descriptive/diagnostic intent without a metric", kind="rejected")
+    if event_id is not None and qc != triage.CAUSAL:
+        raise TranslationError("event_id is valid only for Causal intents", kind="rejected")
     if qc == triage.CAUSAL and event_id is not None and metric is None:
-        metric = "revenue"  # same default the rule parser applies
+        event = sl.EVENTS[event_id]
+        metric = event.get("default_metric", event.get("metrics", ["trx"])[0])
+    if qc == triage.CAUSAL and event_id is not None \
+            and metric not in sl.EVENTS[event_id].get("metrics", []):
+        raise TranslationError(
+            f"metric {metric!r} is not registered for event {event_id!r}", kind="rejected")
 
     # the model never authors rendered refusal copy: for abstention classes the
     # curated product reason is substituted, and the model's own explanation is
@@ -173,9 +211,10 @@ def _validate(question: str, raw: str) -> tuple[triage.Intent, dict]:
 
     intent = triage.Intent(
         question=question, question_class=qc, metric=metric, filters=filters,
-        trend=bool(d.get("trend")), event_id=event_id, template=template,
+        trend=d["trend"], dim_breakdown=dim_breakdown,
+        event_id=event_id, template=template,
         reason=reason, window=window, compare_basis=basis,
     )
     meta = {"translator": "llm", "raw": cleaned, "validated": True,
-            "model_reason": str(d.get("reason") or "")}
+            "model_reason": d["reason"]}
     return intent, meta

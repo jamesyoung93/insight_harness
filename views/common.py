@@ -3,15 +3,17 @@ decomposition waterfalls, the causal design brief, and scoped-refusal
 presentation. Every page renders answers through render_answer()."""
 from __future__ import annotations
 
+import html
+
 import altair as alt
 import pandas as pd
 import streamlit as st
 
 from harness import semantic_layer as sl
-from harness import saved_insights, services, tiles
+from harness import runtime_policy, saved_insights, services, tiles
 from harness.provenance import TIER_ABSTAINED
 
-TIER_COLORS = {"Verified": "#0E7C7B", "Directional": "#B07C0E", "Hypothesis": "#8A4FBE",
+TIER_COLORS = {"Verified": "#0E7C7B", "Directional": "#765100", "Hypothesis": "#70408F",
                TIER_ABSTAINED: "#6B7280"}
 
 # chart palette (validated: in lightness band, >=3:1 on surface, CVD-safe pairs)
@@ -20,6 +22,53 @@ C_PRIMARY, C_REFERENCE = "#2a78d6", "#6B7280"
 C_LABEL = "#52514e"
 HOME_PAGE = "Home"
 _BASIS_CONTROL = {code: label for label, code in tiles.BASIS_CONTROLS.items()}
+
+
+def format_metric_value(metric: str, variant: str | None, value: float | None, *,
+                        places: int = 1) -> str:
+    """Format a governed value without losing its unit semantics."""
+
+    if value is None:
+        return "—"
+    numeric = float(value)
+    if sl.metric_kind(metric) == "ratio":
+        return f"{numeric:.1%}"
+    if variant == "dollars":
+        return f"${numeric:,.{places}f}"
+    return f"{numeric:,.{places}f}"
+
+
+def format_artifact_value(art, value: float | None, *, places: int = 1) -> str:
+    resolution = art.resolution
+    if resolution is None:
+        return "—" if value is None else f"{float(value):,.{places}f}"
+    return format_metric_value(resolution.metric, resolution.variant, value, places=places)
+
+
+def format_comparison_delta(art, comparison: dict) -> str | None:
+    """Return relative percent for additive metrics and points for ratios."""
+
+    if not comparison.get("available") or art.resolution is None:
+        return None
+    if sl.metric_kind(art.resolution.metric) == "ratio":
+        points = comparison.get("delta_pp")
+        return f"{float(points):+.1f} pp" if points is not None else None
+    relative = comparison.get("delta_pct")
+    return f"{float(relative) * 100:+.1f}%" if relative is not None else None
+
+
+def format_native_delta(metric: str, variant: str | None, value: float | None) -> str:
+    """Format an additive movement in the metric's native unit."""
+
+    if value is None:
+        return "—"
+    numeric = float(value)
+    if sl.metric_kind(metric) == "ratio":
+        return f"{numeric * 100:+.1f} pp"
+    if variant == "dollars":
+        sign = "+" if numeric >= 0 else "-"
+        return f"{sign}${abs(numeric):,.1f}"
+    return f"{numeric:+,.1f}"
 
 
 # --------------------------------------------------------------------------- #
@@ -39,17 +88,46 @@ def queue_question(question: str) -> None:
     st.session_state["nav"] = HOME_PAGE
 
 
+def queue_question_with_resolution(question: str, source: str | None = None,
+                                   variant: str | None = None,
+                                   basis: str | None = None) -> None:
+    """Open a question without losing the definition that produced it.
+
+    Drill-through surfaces use this callback whenever their artifact was
+    evaluated under an explicit source or variant.  Setting governed defaults
+    explicitly when an override is absent also prevents an unrelated, stale
+    Ask override from changing the reopened answer.
+    """
+
+    st.session_state["ask_src"] = source or "governed default"
+    st.session_state["_ask_src_last"] = st.session_state["ask_src"]
+    st.session_state["ask_var"] = variant or "governed default"
+    st.session_state["_ask_var_last"] = st.session_state["ask_var"]
+    basis_labels = {
+        "prior_month": "prior month",
+        "prior_quarter": "prior quarter",
+        "yoy": "same month last year",
+    }
+    if basis in basis_labels:
+        st.session_state["ask_basis"] = basis_labels[basis]
+        st.session_state["_ask_basis_last"] = basis_labels[basis]
+    elif basis is None:
+        st.session_state.pop("ask_basis", None)
+        st.session_state.pop("_ask_basis_last", None)
+    queue_question(question)
+
+
 def clear_replay() -> None:
     st.session_state.pop("replay_key", None)
 
 
 def saved_insight_store() -> saved_insights.InMemorySavedInsightStore:
-    """Return this viewer's store, copying legacy watches once without writes."""
+    """Return this viewer's isolated store.
 
-    if saved_insights.SESSION_STORE_KEY not in st.session_state:
-        legacy = services.load_watchlist()
-        st.session_state[saved_insights.SESSION_STORE_KEY] = \
-            saved_insights.InMemorySavedInsightStore(legacy)
+    Historical container-global watch files are deliberately not imported:
+    anonymous viewers must never inherit another viewer's saved questions.
+    """
+
     return saved_insights.session_store(st.session_state)
 
 
@@ -72,7 +150,12 @@ def _save_watch(art) -> saved_insights.SaveResult:
     if basis_code is None and art.engine == "decomposition":
         basis_code = "prior_quarter"
     basis = _BASIS_CONTROL.get(basis_code or "prior_month", "MoM")
-    viz_kind = "line" if intent.trend or art.chart_df is not None else "sparkline"
+    if intent.question_class == "Retrieval":
+        viz_kind = "count"
+    elif intent.question_class == "Diagnostic":
+        viz_kind = "table"
+    else:
+        viz_kind = "line" if intent.trend or art.chart_df is not None else "sparkline"
     label = (f"{sl.METRICS[resolution.metric]['label']} · "
              f"{sl.scope_string(intent.filters)}")
     insight = saved_insights.create_saved_insight(
@@ -84,6 +167,9 @@ def _save_watch(art) -> saved_insights.SaveResult:
         window=_watch_window(intent),
         basis=basis,
         viz_kind=viz_kind,
+        question_class=intent.question_class,
+        breakdown_dimension=intent.dim_breakdown,
+        retrieval_template=intent.template,
     )
     return saved_insight_store().add(insight)
 
@@ -92,7 +178,8 @@ def _save_watch(art) -> saved_insights.SaveResult:
 # Chips and the stamp
 # --------------------------------------------------------------------------- #
 def chip(tier: str) -> str:
-    return f'<span class="tier-chip" style="background:{TIER_COLORS.get(tier, "#333")}">{tier}</span>'
+    label = html.escape(str(tier))
+    return f'<span class="tier-chip" style="background:{TIER_COLORS.get(tier, "#333")}">{label}</span>'
 
 
 def render_stamp(art) -> None:
@@ -127,12 +214,20 @@ def line_chart(chart_df: pd.DataFrame) -> None:
     color = alt.Color("series:N",
                       scale=alt.Scale(domain=series, range=[C_PRIMARY, C_REFERENCE][:len(series)]),
                       legend=None if len(series) == 1 else alt.Legend(orient="top", title=None))
+    dash = alt.StrokeDash(
+        "series:N", legend=None,
+        scale=alt.Scale(domain=series, range=[[1, 0], [6, 4]][:len(series)]),
+    ) if len(series) > 1 else alt.value([1, 0])
     st.altair_chart(
         alt.Chart(long).mark_line(point=True, strokeWidth=2).encode(
             x=alt.X("month:O", title=None), y=alt.Y("value:Q", title=None), color=color,
+            strokeDash=dash,
             tooltip=[alt.Tooltip("month:O"), alt.Tooltip("series:N"),
                      alt.Tooltip("value:Q", format=",.1f")],
-        ).properties(height=260), width="stretch")
+        ).properties(
+            height=260,
+            description="Monthly current and comparison series; the comparison line is dashed.",
+        ), width="stretch")
 
 
 def waterfall(t: pd.DataFrame, m0: str, m1: str) -> alt.Chart:
@@ -210,15 +305,28 @@ def _decomposition_body(art, key: str) -> None:
 
 
 def _signoff(art) -> None:
-    ts = services.log_review(art)
+    credential = st.session_state.get("_governance_admin_credential")
+    if not runtime_policy.valid_governance_token(credential):
+        st.toast("Analyst sign-off requires administrator authentication.")
+        return
+    ts = services.log_feedback(art, "analyst_reviewed", "authenticated-admin")
     st.session_state.setdefault("reviewed", {})[art.result_hash] = ts
     art.extras["analyst_reviewed"] = ts
 
 
 def _causal_brief(art, key: str) -> None:
     est, ev, sens = art.extras["estimate"], art.extras["event"], art.extras["sensitivity"]
-    scope = ", ".join(f"{k}={v}" for k, v in ev["scope"].items())
-    controls = ", ".join(ev["candidate_controls"]["region"])
+    def render_scope(values: dict) -> str:
+        parts = []
+        for dimension, value in values.items():
+            rendered = ", ".join(map(str, value)) if isinstance(value, (list, tuple)) else str(value)
+            parts.append(f"{dimension}={rendered}")
+        return "; ".join(parts) or "all registered observations"
+
+    scope = render_scope(art.extras.get("analysis_scope") or ev["scope"])
+    controls = render_scope(art.extras.get("control_scope")
+                            or ev.get("control_scope")
+                            or ev.get("candidate_controls", {}))
 
     st.caption(f"Question: {art.question}")
     st.markdown(
@@ -234,7 +342,7 @@ def _causal_brief(art, key: str) -> None:
 
     c1, c2 = st.columns(2)
     c1.metric("Estimated effect (control-adjusted)", f"{est['did_pct']*100:+.1f}%")
-    c2.metric("Naive pre/post read", f"{est['naive_pct']*100:+.1f}%",
+    c2.metric("Treated pre/post read", f"{est['treated_growth_pct']*100:+.1f}%",
               help="What the change looks like with no control group. The difference "
                    "between the two numbers is what the comparison corrects.")
     if art.chart_df is not None:
@@ -258,10 +366,16 @@ def _causal_brief(art, key: str) -> None:
         st.success(f"Analyst-reviewed on {reviewed[:10]}. The sign-off is recorded with "
                    "the answer's provenance.")
     else:
-        st.button("Mark as analyst-reviewed", key=f"{key}_signoff",
-                  on_click=_signoff, args=(art,),
-                  help="Records your sign-off against this exact result hash and "
-                       "data version.")
+        authorized = runtime_policy.valid_governance_token(
+            st.session_state.get("_governance_admin_credential"))
+        if authorized:
+            st.button("Mark as analyst-reviewed", key=f"{key}_signoff",
+                      on_click=_signoff, args=(art,),
+                      help="Records your authenticated sign-off against this exact result "
+                           "hash and data version.")
+        else:
+            st.info("Analyst sign-off is locked. Authenticate with the server-configured "
+                    "administrator token on the Semantic Layer page to review this result.")
 
 
 # --------------------------------------------------------------------------- #
@@ -277,7 +391,9 @@ def _divergence_block(art) -> None:
         for d in art.divergence:
             flag = "**material**" if d["material"] else "immaterial"
             note = f" · {d['note']}" if d["note"] else ""
-            st.markdown(f"- {d['label']} → {d['value']:,.1f} ({d['rel_diff']*100:+.1f}%, {flag}){note}")
+            value = format_artifact_value(art, d["value"])
+            st.markdown(f"- {d['label']} → {value} "
+                        f"({d['rel_diff']*100:+.1f}%, {flag}){note}")
 
 
 def _caveats_block(art) -> None:
@@ -314,14 +430,22 @@ def _actions_row(art, key: str) -> None:
                            data=art.table.to_csv(index=False),
                            file_name=f"answer_{slug}_{art.result_hash}.csv",
                            mime="text/csv", key=f"{key}_csv")
-    if c3.button("👍 Correct", key=f"{key}_up"):
+    votes = st.session_state.setdefault("_feedback_votes", {})
+    already_voted = art.result_hash in votes
+    if c3.button("👍 Correct", key=f"{key}_up", disabled=already_voted):
         services.log_feedback(art, "correct")
+        votes[art.result_hash] = "correct"
         st.toast("Logged.")
-    if c4.button("🚩 Number is wrong", key=f"{key}_down"):
+    if c4.button("🚩 Number is wrong", key=f"{key}_down", disabled=already_voted):
         services.log_feedback(art, "wrong")
+        votes[art.result_hash] = "wrong"
         st.toast("Logged — flagged answers are reviewed.")
+    # A saved insight must reproduce the original bounded question class.
+    # Causal designs are intentionally not watchable: SavedQuestionSpec does
+    # not model event/design identity, so presenting one as a saved trend would
+    # be false provenance.
     watchable = art.resolution is not None and art.extras.get("intent") is not None \
-        and art.engine in ("descriptive", "decomposition", "causal_advisor")
+        and art.engine in ("descriptive", "decomposition", "retrieval")
     if watchable:
         if c5.button("👁 Watch", key=f"{key}_watch",
                      help="Pin this metric and scope to the Watched list in Monitoring."):
@@ -336,8 +460,9 @@ def _actions_row(art, key: str) -> None:
 
 
 def _refusal(art, key: str) -> None:
-    reason = art.headline.removeprefix("Declined: ")
-    st.markdown(f'<div class="refusal"><b>Scoped refusal</b> — “{art.question}”<br>{reason}</div>',
+    reason = html.escape(art.headline.removeprefix("Declined: "))
+    question = html.escape(art.question)
+    st.markdown(f'<div class="refusal"><b>Scoped refusal</b> — “{question}”<br>{reason}</div>',
                 unsafe_allow_html=True)
     reframes = art.extras.get("reframes", [])
     if reframes:

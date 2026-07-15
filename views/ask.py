@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import logging
 import os
+import hashlib
 from datetime import datetime
 
 import streamlit as st
 
-from harness import pipeline, triage
+from harness import pipeline, runtime_policy, triage
 from harness import semantic_layer as sl
 from views import common
 
@@ -62,6 +63,22 @@ def _count_translation(art) -> None:
         stats["rejected"] += 1
 
 
+def _model_context() -> tuple[str | None, str, bool]:
+    """Resolve a policy-approved key/model and whether the quota was exhausted."""
+
+    session_key = st.session_state.get("api_key")
+    deployment_key = os.environ.get("ANTHROPIC_API_KEY") \
+        if runtime_policy.deployment_llm_enabled() else None
+    key = session_key or deployment_key
+    used = int(st.session_state.get("_model_calls_used", 0))
+    exhausted = bool(key and used >= runtime_policy.session_model_call_limit())
+    models = runtime_policy.allowed_models()
+    model = st.session_state.get("llm_model")
+    if model not in models:
+        model = models[0]
+    return (None if exhausted else key), model, exhausted
+
+
 def _history_rail() -> None:
     history = st.session_state.get("history", [])
     st.markdown("**This session**")
@@ -89,7 +106,7 @@ def render_workspace() -> None:
         if "ask_q" not in st.session_state and "_ask_q_last" in st.session_state:
             st.session_state["ask_q"] = st.session_state["_ask_q_last"]
         q = st.text_input("Question", key="ask_q", on_change=common.clear_replay,
-                          placeholder="e.g., Which segments account for the revenue change?")
+                          placeholder="e.g., Which specialties account for the TRx change?")
         st.session_state["_ask_q_last"] = q
 
         history = st.session_state.get("history", [])
@@ -136,13 +153,18 @@ def render_workspace() -> None:
                        "Edit the question above to ask something new.")
             common.render_answer(entry["artifact"], key="replay")
         elif q:
-            api_key = st.session_state.get("api_key") or os.environ.get("ANTHROPIC_API_KEY")
+            api_key, model, exhausted = _model_context()
+            if exhausted:
+                st.warning("This session's model-call allowance is exhausted. The governed "
+                           "built-in parser is handling questions without an external call.")
             # governance settings are part of "identical question + config":
             # a config change must invalidate the memoized answer
             gov = (sl.materiality(),
                    tuple((m, sl.default_variant(m)) for m in sl.METRICS))
-            params = (q, src, var, basis, bool(api_key),
-                      st.session_state.get("llm_model"), gov, sl.data_version())
+            credential_fingerprint = hashlib.sha256(api_key.encode()).hexdigest()[:8] \
+                if api_key else None
+            params = (q, src, var, basis, credential_fingerprint,
+                      model, gov, sl.data_version())
             cached = st.session_state.get("_answer_cache")
             if cached and cached[0] == params:
                 art = cached[1]  # same request: don't recompute (or re-call the LLM)
@@ -153,12 +175,17 @@ def render_workspace() -> None:
                                               None if src == "governed default" else src,
                                               None if var == "governed default" else var,
                                               api_key=api_key,
-                                              model=st.session_state.get("llm_model"),
+                                              model=model,
                                               basis=basis)
+                    if api_key:
+                        st.session_state["_model_calls_used"] = \
+                            int(st.session_state.get("_model_calls_used", 0)) + 1
                     st.session_state["_answer_cache"] = (params, art)
                     _count_translation(art)
                 except Exception:
-                    logging.getLogger(__name__).exception("answer computation failed: %s", q)
+                    question_hash = hashlib.sha256(q.encode()).hexdigest()[:12]
+                    logging.getLogger(__name__).exception(
+                        "answer computation failed: question_hash=%s", question_hash)
                     art = None
                     st.error("This answer couldn't be computed, so nothing is shown rather "
                              "than an unverified number. Rephrase the question, or pick a "

@@ -18,13 +18,26 @@ def test_all_five_personas_are_immutable_and_fully_validated():
     for persona in profiles.PERSONAS:
         assert persona.default_tile_ids
         assert set(persona.default_tile_ids) <= set(tiles.TILES_BY_ID)
-        assert persona.default_scope in tiles.region_options()
-        assert persona.digest_scope in tiles.region_options()
+        assert tiles.scope_errors(persona.default_scope) == ()
+        assert tiles.scope_errors(persona.digest_scope) == ()
         assert persona.default_window in tiles.WINDOW_CONTROLS
         assert persona.default_basis in tiles.BASIS_CONTROLS
         assert hash(persona)
     with pytest.raises(FrozenInstanceError):
         profiles.PERSONAS[0].label = "Changed"
+
+
+def test_persona_scopes_are_immutable_dimension_value_mappings():
+    rep = profiles.PERSONAS_BY_ID["sales_rep"]
+    manager = profiles.PERSONAS_BY_ID["district_manager"]
+    assert set(rep.default_scope) == {"territory"}
+    assert set(manager.default_scope) == {"district"}
+    assert rep.default_scope["territory"] in tiles.dimension_values("territory")
+    assert manager.default_scope["district"] in tiles.dimension_values("district")
+    for persona_id in ("brand_marketing", "market_access", "executive"):
+        assert dict(profiles.PERSONAS_BY_ID[persona_id].default_scope) == {}
+    with pytest.raises(TypeError):
+        rep.default_scope["territory"] = "changed"
 
 
 @pytest.mark.parametrize("persona", profiles.PERSONAS, ids=lambda value: value.id)

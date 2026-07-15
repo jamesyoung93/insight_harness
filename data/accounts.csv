@@ -1,241 +1,241 @@
-account_id,name,region,segment,district,territory,specialty,payer_channel,revenue_ttm,revenue_prev_ttm,trx_ttm,calls_90d,months_since_activity,months_since_rx,decile
-A0001,Dr. Morgan 001,North,SMB,North District 2,N-SM-A,Primary Care,Cash,154.8,153.5,1315.6,6,2,2,3
-A0002,Dr. Morgan 002,South,SMB,South District 2,S-SM-A,Primary Care,Cash,54.3,47.8,461.3,2,1,1,1
-A0003,Dr. Morgan 003,South,SMB,South District 2,S-SM-A,Primary Care,Cash,222.5,194.9,1891.3,6,4,4,4
-A0004,Dr. Morgan 004,West,SMB,West District 2,W-SM-A,Primary Care,Cash,189.9,186.6,1614.3,7,1,1,4
-A0005,Dr. Morgan 005,South,SMB,South District 2,S-SM-A,Primary Care,Cash,39.0,44.1,331.3,9,0,0,1
-A0006,Dr. Morgan 006,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,2451.5,2793.1,20837.4,6,0,0,10
-A0007,Dr. Morgan 007,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,678.2,651.5,5765.1,16,0,0,8
-A0008,Dr. Morgan 008,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,479.8,472.7,4077.9,3,2,2,7
-A0009,Dr. Morgan 009,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,559.1,545.5,4752.6,5,1,1,7
-A0010,Dr. Morgan 010,South,SMB,South District 2,S-SM-A,Primary Care,Cash,291.0,301.8,2473.2,14,5,5,5
-A0011,Dr. Morgan 011,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,597.4,617.6,5078.2,5,1,1,8
-A0012,Dr. Morgan 012,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,744.8,669.5,6330.9,3,0,0,8
-A0013,Dr. Morgan 013,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,571.9,592.2,4861.2,4,0,0,7
-A0014,Dr. Morgan 014,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,871.3,878.5,7405.7,0,3,3,9
-A0015,Dr. Morgan 015,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,234.6,183.4,1994.0,19,0,0,5
-A0016,Dr. Morgan 016,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,1086.2,840.1,9232.5,2,0,0,9
-A0017,Dr. Morgan 017,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,958.7,879.1,8149.3,6,2,2,9
-A0018,Dr. Morgan 018,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,280.0,247.2,2380.1,12,2,2,5
-A0019,Dr. Morgan 019,North,SMB,North District 2,N-SM-A,Primary Care,Cash,101.7,124.9,864.3,1,4,4,2
-A0020,Dr. Morgan 020,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,899.8,823.3,7648.1,12,4,4,9
-A0021,Dr. Morgan 021,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,594.2,689.3,5050.3,13,8,8,8
-A0022,Dr. Morgan 022,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,271.9,291.4,2311.2,10,5,5,5
-A0023,Dr. Morgan 023,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,1255.7,1115.4,10673.3,9,1,1,10
-A0024,Dr. Morgan 024,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,469.3,499.9,3989.3,8,2,2,7
-A0025,Dr. Morgan 025,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,450.9,442.8,3832.9,7,2,2,7
-A0026,Dr. Morgan 026,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,286.2,341.8,2432.3,5,0,0,5
-A0027,Dr. Morgan 027,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,154.5,143.1,1313.2,6,0,0,3
-A0028,Dr. Morgan 028,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,1272.0,1097.5,10812.4,11,1,1,10
-A0029,Dr. Morgan 029,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,201.9,221.4,1716.2,15,6,6,4
-A0030,Dr. Morgan 030,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,876.1,805.6,7446.7,5,0,0,9
-A0031,Dr. Morgan 031,North,SMB,North District 2,N-SM-A,Primary Care,Cash,132.4,114.7,1125.5,4,1,1,3
-A0032,Dr. Morgan 032,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,2330.5,2807.2,19808.9,11,3,3,10
-A0033,Dr. Morgan 033,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,256.0,298.4,2176.0,0,0,0,5
-A0034,Dr. Morgan 034,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,378.2,397.1,3214.7,12,0,0,6
-A0035,Dr. Morgan 035,West,SMB,West District 2,W-SM-A,Primary Care,Cash,124.4,135.6,1057.1,8,1,1,3
-A0036,Dr. Morgan 036,North,SMB,North District 2,N-SM-A,Primary Care,Cash,182.8,153.4,1553.7,2,1,1,4
-A0037,Dr. Morgan 037,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,1866.6,1564.3,15866.1,6,2,2,10
-A0038,Dr. Morgan 038,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,610.4,644.4,5188.6,7,5,5,8
-A0039,Dr. Morgan 039,East,SMB,East District 2,E-SM-A,Primary Care,Cash,42.4,33.1,360.8,15,6,6,1
-A0040,Dr. Morgan 040,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,1178.6,1224.0,10018.3,8,5,5,9
-A0041,Dr. Morgan 041,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,1430.2,1500.7,12156.6,14,0,0,10
-A0042,Dr. Morgan 042,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,205.7,243.3,1748.4,1,0,0,4
-A0043,Dr. Morgan 043,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,556.9,556.5,4733.3,9,4,4,7
-A0044,Dr. Morgan 044,West,SMB,West District 2,W-SM-A,Primary Care,Cash,74.9,70.8,636.4,6,5,5,1
-A0045,Dr. Morgan 045,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,763.4,781.6,6488.5,6,3,3,8
-A0046,Dr. Morgan 046,North,SMB,North District 2,N-SM-A,Primary Care,Cash,289.9,283.0,2464.1,0,3,3,5
-A0047,Dr. Morgan 047,South,SMB,South District 2,S-SM-A,Primary Care,Cash,70.1,59.6,595.7,2,5,5,1
-A0048,Dr. Morgan 048,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,410.4,417.0,3488.3,7,4,4,6
-A0049,Dr. Morgan 049,West,SMB,West District 2,W-SM-A,Primary Care,Cash,189.4,189.3,1609.8,9,5,5,4
-A0050,Dr. Morgan 050,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,751.6,710.5,6389.0,12,5,5,8
-A0051,Dr. Morgan 051,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,578.1,691.4,4914.2,15,4,4,7
-A0052,Dr. Morgan 052,West,SMB,West District 2,W-SM-A,Primary Care,Cash,113.3,124.1,962.8,10,7,7,3
-A0053,Dr. Morgan 053,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,940.5,884.5,7994.0,0,4,4,9
-A0054,Dr. Morgan 054,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,599.1,557.7,5092.1,7,0,0,8
-A0055,Dr. Morgan 055,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,380.5,289.2,3234.3,13,2,2,6
-A0056,Dr. Morgan 056,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,277.7,303.7,2360.6,9,4,4,5
-A0057,Dr. Morgan 057,East,SMB,East District 2,E-SM-A,Primary Care,Cash,121.2,113.9,1030.5,4,2,2,3
-A0058,Dr. Morgan 058,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,360.9,414.1,3068.0,8,2,2,6
-A0059,Dr. Morgan 059,North,SMB,North District 2,N-SM-A,Primary Care,Cash,254.6,222.6,2164.3,17,2,2,5
-A0060,Dr. Morgan 060,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,129.1,130.3,1097.3,1,2,2,3
-A0061,Dr. Morgan 061,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,1251.7,1556.6,10639.4,1,1,1,10
-A0062,Dr. Morgan 062,South,SMB,South District 2,S-SM-A,Primary Care,Cash,122.1,109.1,1037.5,4,0,0,3
-A0063,Dr. Morgan 063,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,304.6,299.7,2589.0,12,0,0,6
-A0064,Dr. Morgan 064,West,SMB,West District 2,W-SM-A,Primary Care,Cash,52.5,48.2,446.5,10,0,0,1
-A0065,Dr. Morgan 065,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,291.4,255.4,2476.5,9,1,1,5
-A0066,Dr. Morgan 066,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,287.6,242.1,2445.0,5,2,2,5
-A0067,Dr. Morgan 067,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,1229.7,1102.4,10452.1,0,7,7,9
-A0068,Dr. Morgan 068,West,SMB,West District 2,W-SM-A,Primary Care,Cash,75.7,82.3,643.1,11,8,8,1
-A0069,Dr. Morgan 069,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,2105.1,1983.2,17892.9,9,1,1,10
-A0070,Dr. Morgan 070,West,SMB,West District 2,W-SM-A,Primary Care,Cash,102.7,91.9,873.4,0,1,1,2
-A0071,Dr. Morgan 071,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,1173.3,933.7,9972.9,11,1,1,9
-A0072,Dr. Morgan 072,North,SMB,North District 2,N-SM-A,Primary Care,Cash,106.6,88.2,905.9,10,5,5,2
-A0073,Dr. Morgan 073,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,689.0,542.7,5856.6,11,4,4,8
-A0074,Dr. Morgan 074,South,SMB,South District 2,S-SM-A,Primary Care,Cash,135.0,151.3,1147.2,12,0,0,3
-A0075,Dr. Morgan 075,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,812.9,931.2,6909.6,3,1,1,9
-A0076,Dr. Morgan 076,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,291.3,282.2,2475.9,0,0,0,5
-A0077,Dr. Morgan 077,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,211.3,245.3,1796.2,13,3,3,4
-A0078,Dr. Morgan 078,North,SMB,North District 2,N-SM-A,Primary Care,Cash,69.4,59.7,589.9,6,3,3,1
-A0079,Dr. Morgan 079,North,SMB,North District 2,N-SM-A,Primary Care,Cash,96.6,94.5,821.2,3,1,1,2
-A0080,Dr. Morgan 080,North,SMB,North District 2,N-SM-A,Primary Care,Cash,109.8,106.4,933.6,11,2,2,2
-A0081,Dr. Morgan 081,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,426.6,401.4,3625.9,12,3,3,7
-A0082,Dr. Morgan 082,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,877.8,831.7,7461.3,6,0,0,9
-A0083,Dr. Morgan 083,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,1392.6,1489.2,11836.9,15,3,3,10
-A0084,Dr. Morgan 084,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,146.3,156.5,1243.5,0,7,7,3
-A0085,Dr. Morgan 085,South,SMB,South District 2,S-SM-A,Primary Care,Cash,75.3,68.6,639.9,10,0,0,1
-A0086,Dr. Morgan 086,West,SMB,West District 2,W-SM-A,Primary Care,Cash,91.0,97.3,773.7,11,3,3,2
-A0087,Dr. Morgan 087,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,1069.1,916.6,9087.7,8,1,1,9
-A0088,Dr. Morgan 088,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,301.9,284.5,2566.5,0,0,0,6
-A0089,Dr. Morgan 089,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,571.5,555.4,4857.9,11,3,3,7
-A0090,Dr. Morgan 090,North,SMB,North District 2,N-SM-A,Primary Care,Cash,105.1,90.2,893.1,4,5,5,2
-A0091,Dr. Morgan 091,East,SMB,East District 2,E-SM-A,Primary Care,Cash,177.1,176.4,1505.4,3,0,0,3
-A0092,Dr. Morgan 092,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,1121.2,1005.2,9530.2,4,1,1,9
-A0093,Dr. Morgan 093,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,2222.9,2093.3,18894.6,8,0,0,10
-A0094,Dr. Morgan 094,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,2069.3,1576.2,17588.8,5,0,0,10
-A0095,Dr. Morgan 095,East,SMB,East District 2,E-SM-A,Primary Care,Cash,268.2,312.6,2280.0,2,1,1,5
-A0096,Dr. Morgan 096,North,SMB,North District 2,N-SM-A,Primary Care,Cash,99.8,94.1,848.1,11,5,5,2
-A0097,Dr. Morgan 097,East,SMB,East District 2,E-SM-A,Primary Care,Cash,65.8,58.6,559.1,7,1,1,1
-A0098,Dr. Morgan 098,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,596.9,499.1,5073.6,4,0,0,8
-A0099,Dr. Morgan 099,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,317.8,287.5,2701.2,11,0,0,6
-A0100,Dr. Morgan 100,West,SMB,West District 2,W-SM-A,Primary Care,Cash,61.8,59.6,525.5,4,0,0,1
-A0101,Dr. Morgan 101,West,SMB,West District 2,W-SM-A,Primary Care,Cash,71.8,68.6,610.4,0,0,0,1
-A0102,Dr. Morgan 102,North,SMB,North District 2,N-SM-A,Primary Care,Cash,87.8,80.9,746.6,5,7,7,2
-A0103,Dr. Morgan 103,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,192.7,178.7,1637.8,8,2,2,4
-A0104,Dr. Morgan 104,South,SMB,South District 2,S-SM-A,Primary Care,Cash,51.4,55.4,437.0,8,0,0,1
-A0105,Dr. Morgan 105,East,SMB,East District 2,E-SM-A,Primary Care,Cash,80.8,91.6,686.5,16,3,3,2
-A0106,Dr. Morgan 106,South,SMB,South District 2,S-SM-A,Primary Care,Cash,185.5,178.2,1576.7,9,2,2,4
-A0107,Dr. Morgan 107,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,378.8,312.1,3220.0,2,1,1,6
-A0108,Dr. Morgan 108,South,SMB,South District 2,S-SM-A,Primary Care,Cash,177.9,188.6,1512.1,9,1,1,3
-A0109,Dr. Morgan 109,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,436.6,444.8,3710.9,9,0,0,7
-A0110,Dr. Morgan 110,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,227.2,250.5,1931.0,15,0,0,4
-A0111,Dr. Morgan 111,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,630.5,649.9,5359.3,14,6,6,8
-A0112,Dr. Morgan 112,South,SMB,South District 2,S-SM-A,Primary Care,Cash,104.3,107.7,886.9,5,0,0,2
-A0113,Dr. Morgan 113,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,552.0,509.4,4691.6,8,0,0,7
-A0114,Dr. Morgan 114,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,350.1,313.6,2975.5,12,3,3,6
-A0115,Dr. Morgan 115,North,SMB,North District 2,N-SM-A,Primary Care,Cash,227.5,224.3,1933.9,11,4,4,4
-A0116,Dr. Morgan 116,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,385.5,392.4,3276.7,12,2,2,6
-A0117,Dr. Morgan 117,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,355.8,342.1,3024.6,2,0,0,6
-A0118,Dr. Morgan 118,North,SMB,North District 2,N-SM-A,Primary Care,Cash,88.3,92.7,750.4,12,4,4,2
-A0119,Dr. Morgan 119,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,240.9,236.5,2047.8,2,2,2,5
-A0120,Dr. Morgan 120,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,676.3,741.4,5748.7,5,6,6,8
-A0121,Dr. Morgan 121,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,193.0,210.6,1640.8,7,1,1,4
-A0122,Dr. Morgan 122,South,SMB,South District 2,S-SM-A,Primary Care,Cash,108.9,125.6,925.7,0,4,4,2
-A0123,Dr. Morgan 123,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,588.0,531.0,4998.2,11,4,4,8
-A0124,Dr. Morgan 124,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,756.5,664.5,6430.6,7,0,0,8
-A0125,Dr. Morgan 125,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,521.6,518.8,4433.8,4,5,5,7
-A0126,Dr. Morgan 126,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,304.3,305.9,2586.4,9,0,0,6
-A0127,Dr. Morgan 127,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,630.9,490.8,5362.7,6,0,0,8
-A0128,Dr. Morgan 128,South,SMB,South District 2,S-SM-A,Primary Care,Cash,201.6,134.2,1713.4,13,5,5,4
-A0129,Dr. Morgan 129,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,1034.0,1050.3,8789.1,11,3,3,9
-A0130,Dr. Morgan 130,East,SMB,East District 2,E-SM-A,Primary Care,Cash,102.4,79.5,870.5,10,2,2,2
-A0131,Dr. Morgan 131,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,244.4,223.8,2077.8,9,6,6,5
-A0132,Dr. Morgan 132,West,SMB,West District 2,W-SM-A,Primary Care,Cash,187.4,206.5,1592.8,1,2,2,4
-A0133,Dr. Morgan 133,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,279.0,265.4,2371.7,3,2,2,5
-A0134,Dr. Morgan 134,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,955.6,1024.1,8122.3,13,1,1,9
-A0135,Dr. Morgan 135,North,SMB,North District 2,N-SM-A,Primary Care,Cash,80.1,84.7,680.6,8,1,1,1
-A0136,Dr. Morgan 136,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,516.9,539.0,4393.9,2,6,6,7
-A0137,Dr. Morgan 137,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,1068.0,1080.1,9078.3,12,6,6,9
-A0138,Dr. Morgan 138,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,384.4,349.5,3267.6,4,4,4,6
-A0139,Dr. Morgan 139,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,1023.1,793.8,8696.5,2,3,3,9
-A0140,Dr. Morgan 140,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,576.7,552.4,4902.2,4,2,2,7
-A0141,Dr. Morgan 141,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,1526.3,1698.8,12973.5,14,6,6,10
-A0142,Dr. Morgan 142,West,SMB,West District 2,W-SM-A,Primary Care,Cash,80.1,90.4,680.6,15,3,3,1
-A0143,Dr. Morgan 143,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,372.4,361.8,3165.0,14,0,0,6
-A0144,Dr. Morgan 144,East,SMB,East District 2,E-SM-A,Primary Care,Cash,114.1,116.2,970.0,10,0,0,3
-A0145,Dr. Morgan 145,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,167.3,195.1,1421.9,0,0,0,3
-A0146,Dr. Morgan 146,East,SMB,East District 2,E-SM-A,Primary Care,Cash,110.0,89.3,935.2,9,0,0,2
-A0147,Dr. Morgan 147,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,373.5,336.2,3174.6,19,2,2,6
-A0148,Dr. Morgan 148,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,724.6,857.4,6159.2,0,3,3,8
-A0149,Dr. Morgan 149,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,630.8,635.8,5361.5,2,1,1,8
-A0150,Dr. Morgan 150,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,1034.6,823.1,8794.0,2,0,0,9
-A0151,Dr. Morgan 151,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,444.3,523.2,3776.1,6,7,7,7
-A0152,Dr. Morgan 152,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,1786.4,1782.7,15184.7,5,1,1,10
-A0153,Dr. Morgan 153,South,SMB,South District 2,S-SM-A,Primary Care,Cash,145.8,157.0,1239.3,14,2,2,3
-A0154,Dr. Morgan 154,South,SMB,South District 2,S-SM-A,Primary Care,Cash,76.3,76.1,648.8,8,0,0,1
-A0155,Dr. Morgan 155,South,SMB,South District 2,S-SM-A,Primary Care,Cash,122.3,129.5,1039.4,13,1,1,3
-A0156,Dr. Morgan 156,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,307.6,277.5,2614.8,0,0,0,6
-A0157,Dr. Morgan 157,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,945.8,964.9,8038.9,14,0,0,9
-A0158,Dr. Morgan 158,West,SMB,West District 2,W-SM-A,Primary Care,Cash,105.1,125.7,893.7,1,0,0,2
-A0159,Dr. Morgan 159,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,1166.3,1215.7,9913.4,5,7,7,9
-A0160,Dr. Morgan 160,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,322.4,301.1,2740.7,4,4,4,6
-A0161,Dr. Morgan 161,South,SMB,South District 2,S-SM-A,Primary Care,Cash,45.9,51.1,389.9,6,0,0,1
-A0162,Dr. Morgan 162,East,SMB,East District 2,E-SM-A,Primary Care,Cash,122.1,110.8,1038.1,9,4,4,3
-A0163,Dr. Morgan 163,South,SMB,South District 2,S-SM-A,Primary Care,Cash,197.7,187.6,1680.2,10,0,0,4
-A0164,Dr. Morgan 164,North,SMB,North District 2,N-SM-A,Primary Care,Cash,109.6,111.4,931.4,2,0,0,2
-A0165,Dr. Morgan 165,West,SMB,West District 2,W-SM-A,Primary Care,Cash,224.4,227.7,1907.0,3,4,4,4
-A0166,Dr. Morgan 166,South,SMB,South District 2,S-SM-A,Primary Care,Cash,106.3,106.6,903.7,7,2,2,2
-A0167,Dr. Morgan 167,North,SMB,North District 2,N-SM-A,Primary Care,Cash,145.6,134.9,1237.4,13,2,2,3
-A0168,Dr. Morgan 168,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,1689.9,1852.4,14364.0,0,0,0,10
-A0169,Dr. Morgan 169,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,501.4,402.8,4261.7,16,0,0,7
-A0170,Dr. Morgan 170,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,797.0,539.0,6774.8,1,5,5,8
-A0171,Dr. Morgan 171,South,SMB,South District 2,S-SM-A,Primary Care,Cash,111.4,96.1,946.9,11,1,1,3
-A0172,Dr. Morgan 172,North,SMB,North District 2,N-SM-A,Primary Care,Cash,62.0,79.5,526.9,9,2,2,1
-A0173,Dr. Morgan 173,North,SMB,North District 2,N-SM-A,Primary Care,Cash,75.2,65.8,639.1,15,7,7,1
-A0174,Dr. Morgan 174,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,530.3,573.4,4507.7,5,3,3,7
-A0175,Dr. Morgan 175,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,1303.3,1159.8,11078.2,9,1,1,10
-A0176,Dr. Morgan 176,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,245.0,261.8,2082.8,10,0,0,5
-A0177,Dr. Morgan 177,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,1275.5,1177.4,10842.1,3,8,8,10
-A0178,Dr. Morgan 178,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,350.2,344.5,2976.4,8,0,0,6
-A0179,Dr. Morgan 179,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,495.8,562.7,4214.1,7,3,3,7
-A0180,Dr. Morgan 180,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,1581.3,1707.6,13440.8,10,8,8,10
-A0181,Dr. Morgan 181,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,341.4,316.0,2901.5,0,0,0,6
-A0182,Dr. Morgan 182,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,413.7,330.7,3516.2,10,4,4,6
-A0183,Dr. Morgan 183,North,SMB,North District 2,N-SM-A,Primary Care,Cash,77.5,69.8,658.6,7,3,3,1
-A0184,Dr. Morgan 184,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,578.7,563.0,4919.4,9,3,3,8
-A0185,Dr. Morgan 185,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,684.1,825.5,5814.6,2,4,4,8
-A0186,Dr. Morgan 186,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,711.7,625.5,6049.1,8,2,2,8
-A0187,Dr. Morgan 187,East,SMB,East District 2,E-SM-A,Primary Care,Cash,82.5,83.5,701.5,14,1,1,2
-A0188,Dr. Morgan 188,South,Enterprise,South District 1,S-EN-A,Cardiology,Commercial,1360.4,1291.3,11563.6,9,1,1,10
-A0189,Dr. Morgan 189,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,228.9,183.4,1945.9,6,3,3,4
-A0190,Dr. Morgan 190,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,546.0,626.6,4641.4,2,2,2,7
-A0191,Dr. Morgan 191,North,SMB,North District 2,N-SM-A,Primary Care,Cash,103.8,100.2,882.3,13,3,3,2
-A0192,Dr. Morgan 192,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,284.0,291.0,2414.1,0,6,6,5
-A0193,Dr. Morgan 193,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,472.9,349.2,4019.8,0,1,1,7
-A0194,Dr. Morgan 194,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,203.4,191.2,1728.5,15,6,6,4
-A0195,Dr. Morgan 195,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,418.6,344.4,3558.3,0,5,5,7
-A0196,Dr. Morgan 196,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,234.5,231.6,1993.4,14,1,1,4
-A0197,Dr. Morgan 197,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,549.6,622.3,4671.8,0,0,0,7
-A0198,Dr. Morgan 198,North,SMB,North District 2,N-SM-A,Primary Care,Cash,84.2,78.1,715.6,8,8,8,2
-A0199,Dr. Morgan 199,West,SMB,West District 2,W-SM-A,Primary Care,Cash,122.7,124.6,1043.0,5,4,4,3
-A0200,Dr. Morgan 200,East,SMB,East District 2,E-SM-A,Primary Care,Cash,181.0,184.9,1538.8,11,7,7,3
-A0201,Dr. Morgan 201,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,363.5,312.8,3089.8,5,4,4,6
-A0202,Dr. Morgan 202,North,SMB,North District 2,N-SM-A,Primary Care,Cash,77.5,86.3,658.8,0,1,1,1
-A0203,Dr. Morgan 203,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,202.6,181.0,1721.8,3,0,0,4
-A0204,Dr. Morgan 204,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,290.2,281.3,2466.8,12,6,6,5
-A0205,Dr. Morgan 205,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,346.7,356.4,2947.3,8,4,4,6
-A0206,Dr. Morgan 206,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,844.9,853.9,7181.6,6,3,3,9
-A0207,Dr. Morgan 207,West,SMB,West District 2,W-SM-A,Primary Care,Cash,75.3,57.2,640.4,11,3,3,1
-A0208,Dr. Morgan 208,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,240.5,230.1,2044.6,13,0,0,5
-A0209,Dr. Morgan 209,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,375.0,341.4,3187.3,10,3,3,6
-A0210,Dr. Morgan 210,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,1257.2,1260.6,10686.6,7,3,3,10
-A0211,Dr. Morgan 211,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,882.0,880.1,7497.1,0,4,4,9
-A0212,Dr. Morgan 212,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,222.6,199.3,1892.5,1,1,1,4
-A0213,Dr. Morgan 213,North,SMB,North District 2,N-SM-A,Primary Care,Cash,88.1,81.2,749.0,16,2,2,2
-A0214,Dr. Morgan 214,West,SMB,West District 2,W-SM-A,Primary Care,Cash,251.6,267.1,2138.4,5,0,0,5
-A0215,Dr. Morgan 215,North,SMB,North District 2,N-SM-A,Primary Care,Cash,90.6,81.7,770.0,2,1,1,2
-A0216,Dr. Morgan 216,North,MidMarket,North District 2,N-MI-A,Endocrinology,Commercial,374.4,298.3,3182.5,7,0,0,6
-A0217,Dr. Morgan 217,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,1611.5,1648.4,13698.1,9,0,0,10
-A0218,Dr. Morgan 218,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,1411.0,1273.3,11993.2,11,1,1,10
-A0219,Dr. Morgan 219,West,SMB,West District 2,W-SM-A,Primary Care,Cash,83.7,66.5,711.7,4,2,2,2
-A0220,Dr. Morgan 220,North,SMB,North District 2,N-SM-A,Primary Care,Cash,213.4,195.9,1813.7,17,0,0,4
-A0221,Dr. Morgan 221,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,602.7,534.9,5122.7,13,2,2,8
-A0222,Dr. Morgan 222,North,SMB,North District 2,N-SM-A,Primary Care,Cash,57.0,59.7,484.3,2,0,0,1
-A0223,Dr. Morgan 223,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,975.7,1030.4,8293.3,11,8,8,9
-A0224,Dr. Morgan 224,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,2013.2,2407.5,17112.0,5,7,7,10
-A0225,Dr. Morgan 225,East,SMB,East District 2,E-SM-A,Primary Care,Cash,301.1,292.7,2559.6,3,4,4,5
-A0226,Dr. Morgan 226,West,Enterprise,West District 1,W-EN-A,Cardiology,Commercial,1471.1,1410.7,12504.2,17,0,0,10
-A0227,Dr. Morgan 227,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,220.2,190.5,1871.9,0,0,0,4
-A0228,Dr. Morgan 228,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,611.8,603.4,5200.4,5,1,1,8
-A0229,Dr. Morgan 229,North,SMB,North District 2,N-SM-A,Primary Care,Cash,172.7,152.7,1468.0,10,3,3,3
-A0230,Dr. Morgan 230,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,562.7,584.5,4783.3,16,4,4,7
-A0231,Dr. Morgan 231,West,MidMarket,West District 2,W-MI-A,Endocrinology,Commercial,258.0,212.9,2193.0,13,1,1,5
-A0232,Dr. Morgan 232,South,SMB,South District 2,S-SM-A,Primary Care,Cash,135.4,146.3,1151.2,4,0,0,3
-A0233,Dr. Morgan 233,East,MidMarket,East District 2,E-MI-A,Endocrinology,Commercial,205.3,246.9,1745.4,3,1,1,4
-A0234,Dr. Morgan 234,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,1777.4,1261.9,15107.7,12,0,0,10
-A0235,Dr. Morgan 235,North,SMB,North District 2,N-SM-A,Primary Care,Cash,297.8,293.3,2531.3,3,0,0,5
-A0236,Dr. Morgan 236,East,Enterprise,East District 1,E-EN-A,Cardiology,Commercial,1038.3,1061.8,8825.2,6,7,7,9
-A0237,Dr. Morgan 237,North,Enterprise,North District 1,N-EN-A,Cardiology,Commercial,679.6,714.1,5776.7,7,1,1,8
-A0238,Dr. Morgan 238,North,SMB,North District 2,N-SM-A,Primary Care,Cash,46.1,41.0,392.1,13,1,1,1
-A0239,Dr. Morgan 239,South,MidMarket,South District 2,S-MI-A,Endocrinology,Commercial,477.8,510.3,4061.0,13,6,6,7
-A0240,Dr. Morgan 240,East,SMB,East District 2,E-SM-A,Primary Care,Cash,138.4,143.0,1176.7,2,0,0,3
+account_id,name,territory,district,region,specialty,payer_channel,trx_ttm,nrx_ttm,nbrx_ttm,months_since_rx,months_since_activity,calls_90d,call_plan_90d,decile
+HCP0001,Dr. Morgan 001,N-PCP-01,North District 1,North,Primary Care,Commercial,262.144,61.604,43.739,0,0,14,14.16,5
+HCP0002,Dr. Morgan 002,N-PCP-02,North District 2,North,Primary Care,Medicare Part D,310.527,72.974,49.622,0,0,11,18.24,6
+HCP0003,Dr. Morgan 003,N-PCP-01,North District 1,North,Primary Care,Medicaid,64.943,15.262,11.446,0,0,11,8.04,1
+HCP0004,Dr. Morgan 004,N-PCP-02,North District 2,North,Primary Care,Cash,207.043,48.655,31.139,0,0,12,10.08,3
+HCP0005,Dr. Morgan 005,N-PCP-01,North District 1,North,Primary Care,Commercial,168.839,39.677,28.171,0,0,6,8.04,2
+HCP0006,Dr. Morgan 006,N-PCP-02,North District 2,North,Primary Care,Medicare Part D,313.77,73.736,50.14,0,0,17,18.24,6
+HCP0007,Dr. Morgan 007,N-PCP-01,North District 1,North,Primary Care,Medicaid,358.329,84.207,63.155,0,0,26,20.28,8
+HCP0008,Dr. Morgan 008,N-PCP-02,North District 2,North,Primary Care,Cash,168.438,39.583,25.333,0,0,7,8.04,2
+HCP0009,Dr. Morgan 009,N-PCP-01,North District 1,North,Primary Care,Commercial,80.492,18.916,13.43,0,0,13,8.04,1
+HCP0010,Dr. Morgan 010,N-PCP-02,North District 2,North,Primary Care,Medicare Part D,229.093,53.837,36.609,0,0,14,12.12,4
+HCP0011,Dr. Morgan 011,N-PCP-01,North District 1,North,Primary Care,Medicaid,371.543,87.313,65.485,0,0,23,20.28,8
+HCP0012,Dr. Morgan 012,N-PCP-02,North District 2,North,Primary Care,Cash,198.41,46.626,29.841,0,0,8,10.08,3
+HCP0013,Dr. Morgan 013,N-PCP-01,North District 1,North,Primary Care,Commercial,285.824,67.169,47.69,0,0,17,16.2,5
+HCP0014,Dr. Morgan 014,N-PCP-02,North District 2,North,Primary Care,Medicare Part D,273.127,64.185,43.646,0,0,21,14.16,5
+HCP0015,Dr. Morgan 015,N-PCP-01,North District 1,North,Primary Care,Medicaid,395.475,92.937,69.702,3,3,0,24.36,9
+HCP0016,Dr. Morgan 016,N-PCP-02,North District 2,North,Primary Care,Cash,171.377,40.274,25.775,0,0,16,10.08,2
+HCP0017,Dr. Morgan 017,N-PCP-01,North District 1,North,Primary Care,Commercial,358.565,84.263,59.827,0,0,28,20.28,8
+HCP0018,Dr. Morgan 018,N-PCP-02,North District 2,North,Primary Care,Medicare Part D,169.667,39.872,27.113,0,0,7,8.04,2
+HCP0019,Dr. Morgan 019,N-PCP-01,North District 1,North,Primary Care,Medicaid,298.965,70.257,52.693,0,0,17,16.2,6
+HCP0020,Dr. Morgan 020,N-PCP-02,North District 2,North,Primary Care,Cash,287.005,67.446,43.166,0,0,12,16.2,5
+HCP0021,Dr. Morgan 021,N-CAR-01,North District 1,North,Cardiology,Commercial,435.025,71.779,50.963,0,0,19,22.32,9
+HCP0022,Dr. Morgan 022,N-CAR-02,North District 2,North,Cardiology,Medicare Part D,432.804,71.413,48.561,0,0,22,22.32,9
+HCP0023,Dr. Morgan 023,N-CAR-01,North District 1,North,Cardiology,Medicaid,433.611,71.546,53.659,0,0,18,22.32,9
+HCP0024,Dr. Morgan 024,N-CAR-02,North District 2,North,Cardiology,Cash,408.651,67.427,43.154,0,0,25,22.32,9
+HCP0025,Dr. Morgan 025,N-CAR-01,North District 1,North,Cardiology,Commercial,228.941,37.775,26.82,0,0,9,12.12,4
+HCP0026,Dr. Morgan 026,N-CAR-02,North District 2,North,Cardiology,Medicare Part D,333.099,54.961,37.374,0,0,20,18.24,7
+HCP0027,Dr. Morgan 027,N-CAR-01,North District 1,North,Cardiology,Medicaid,358.751,59.194,44.395,0,0,29,20.28,8
+HCP0028,Dr. Morgan 028,N-CAR-02,North District 2,North,Cardiology,Cash,286.623,47.293,30.267,0,0,25,16.2,5
+HCP0029,Dr. Morgan 029,N-CAR-01,North District 1,North,Cardiology,Commercial,210.123,34.67,24.616,0,0,8,12.12,3
+HCP0030,Dr. Morgan 030,N-CAR-02,North District 2,North,Cardiology,Medicare Part D,497.675,82.116,55.839,0,0,23,24.36,9
+HCP0031,Dr. Morgan 031,N-CAR-01,North District 1,North,Cardiology,Medicaid,538.428,88.841,66.631,0,0,18,26.4,10
+HCP0032,Dr. Morgan 032,N-CAR-02,North District 2,North,Cardiology,Cash,334.116,55.129,35.283,0,0,17,18.24,7
+HCP0033,Dr. Morgan 033,N-CAR-01,North District 1,North,Cardiology,Commercial,370.364,61.11,43.388,0,0,23,20.28,8
+HCP0034,Dr. Morgan 034,N-CAR-02,North District 2,North,Cardiology,Medicare Part D,258.924,42.722,29.051,0,0,16,14.16,5
+HCP0035,Dr. Morgan 035,N-CAR-01,North District 1,North,Cardiology,Medicaid,481.114,79.384,59.538,0,0,18,24.36,9
+HCP0036,Dr. Morgan 036,N-CAR-02,North District 2,North,Cardiology,Cash,517.788,85.435,54.678,0,0,24,24.36,10
+HCP0037,Dr. Morgan 037,N-CAR-01,North District 1,North,Cardiology,Commercial,423.023,69.799,49.557,0,0,22,22.32,9
+HCP0038,Dr. Morgan 038,N-CAR-02,North District 2,North,Cardiology,Medicare Part D,354.118,58.429,39.732,0,0,17,20.28,8
+HCP0039,Dr. Morgan 039,N-CAR-01,North District 1,North,Cardiology,Medicaid,346.964,57.249,42.937,0,0,18,18.24,7
+HCP0040,Dr. Morgan 040,N-CAR-02,North District 2,North,Cardiology,Cash,252.842,41.719,26.7,0,0,13,14.16,4
+HCP0041,Dr. Morgan 041,N-END-01,North District 1,North,Endocrinology,Commercial,264.28,54.177,38.466,0,0,19,14.16,5
+HCP0042,Dr. Morgan 042,N-END-02,North District 2,North,Endocrinology,Medicare Part D,379.2,77.736,52.861,0,0,19,22.32,8
+HCP0043,Dr. Morgan 043,N-END-01,North District 1,North,Endocrinology,Medicaid,406.762,83.386,62.54,0,0,27,22.32,9
+HCP0044,Dr. Morgan 044,N-END-02,North District 2,North,Endocrinology,Cash,268.951,55.135,35.286,0,0,16,14.16,5
+HCP0045,Dr. Morgan 045,N-END-01,North District 1,North,Endocrinology,Commercial,166.367,34.105,24.215,0,0,12,8.04,2
+HCP0046,Dr. Morgan 046,N-END-02,North District 2,North,Endocrinology,Medicare Part D,191.092,39.174,26.638,0,2,5,10.08,3
+HCP0047,Dr. Morgan 047,N-END-01,North District 1,North,Endocrinology,Medicaid,367.71,75.381,56.535,0,0,15,20.28,8
+HCP0048,Dr. Morgan 048,N-END-02,North District 2,North,Endocrinology,Cash,273.603,56.089,35.897,0,0,21,16.2,5
+HCP0049,Dr. Morgan 049,N-END-01,North District 1,North,Endocrinology,Commercial,418.065,85.703,60.849,0,0,20,22.32,9
+HCP0050,Dr. Morgan 050,N-END-02,North District 2,North,Endocrinology,Medicare Part D,292.164,59.894,40.728,0,0,12,16.2,6
+HCP0051,Dr. Morgan 051,N-END-01,North District 1,North,Endocrinology,Medicaid,277.702,56.929,42.697,0,0,13,16.2,5
+HCP0052,Dr. Morgan 052,N-END-02,North District 2,North,Endocrinology,Cash,163.858,33.591,21.498,0,0,5,8.04,2
+HCP0053,Dr. Morgan 053,N-END-01,North District 1,North,Endocrinology,Commercial,345.752,70.879,50.324,0,0,13,18.24,7
+HCP0054,Dr. Morgan 054,N-END-02,North District 2,North,Endocrinology,Medicare Part D,182.341,37.38,25.418,0,0,13,10.08,2
+HCP0055,Dr. Morgan 055,N-END-01,North District 1,North,Endocrinology,Medicaid,258.313,52.954,39.716,0,0,14,14.16,4
+HCP0056,Dr. Morgan 056,N-END-02,North District 2,North,Endocrinology,Cash,318.52,65.297,41.79,0,0,16,18.24,6
+HCP0057,Dr. Morgan 057,N-END-01,North District 1,North,Endocrinology,Commercial,288.422,59.127,41.98,0,0,9,16.2,5
+HCP0058,Dr. Morgan 058,N-END-02,North District 2,North,Endocrinology,Medicare Part D,338.155,69.322,47.139,0,0,17,18.24,7
+HCP0059,Dr. Morgan 059,N-END-01,North District 1,North,Endocrinology,Medicaid,529.468,108.541,81.406,0,0,31,26.4,10
+HCP0060,Dr. Morgan 060,N-END-02,North District 2,North,Endocrinology,Cash,361.764,74.162,47.463,0,0,18,20.28,8
+HCP0061,Dr. Morgan 061,S-PCP-01,South District 1,South,Primary Care,Medicare Part D,138.333,32.508,22.106,0,0,8,8.04,1
+HCP0062,Dr. Morgan 062,S-PCP-02,South District 2,South,Primary Care,Medicaid,145.599,34.216,25.662,0,0,7,8.04,1
+HCP0063,Dr. Morgan 063,S-PCP-01,South District 1,South,Primary Care,Cash,122.709,28.837,18.455,0,0,8,8.04,1
+HCP0064,Dr. Morgan 064,S-PCP-02,South District 2,South,Primary Care,Commercial,190.283,44.716,31.749,0,0,12,12.12,2
+HCP0065,Dr. Morgan 065,S-PCP-01,South District 1,South,Primary Care,Medicare Part D,244.821,57.533,39.122,0,0,8,14.16,4
+HCP0066,Dr. Morgan 066,S-PCP-02,South District 2,South,Primary Care,Medicaid,331.913,78.0,58.5,3,3,0,24.36,7
+HCP0067,Dr. Morgan 067,S-PCP-01,South District 1,South,Primary Care,Cash,242.362,56.955,36.451,0,0,15,16.2,4
+HCP0068,Dr. Morgan 068,S-PCP-02,South District 2,South,Primary Care,Commercial,92.091,21.641,15.365,0,0,2,8.04,1
+HCP0069,Dr. Morgan 069,S-PCP-01,South District 1,South,Primary Care,Medicare Part D,159.569,37.499,25.499,0,0,7,10.08,2
+HCP0070,Dr. Morgan 070,S-PCP-02,South District 2,South,Primary Care,Medicaid,164.081,38.559,28.919,0,0,8,10.08,2
+HCP0071,Dr. Morgan 071,S-PCP-01,South District 1,South,Primary Care,Cash,310.452,72.956,46.692,0,0,22,20.28,6
+HCP0072,Dr. Morgan 072,S-PCP-02,South District 2,South,Primary Care,Commercial,194.937,45.81,32.525,0,0,12,12.12,3
+HCP0073,Dr. Morgan 073,S-PCP-01,South District 1,South,Primary Care,Medicare Part D,115.009,27.027,18.379,0,0,7,8.04,1
+HCP0074,Dr. Morgan 074,S-PCP-02,South District 2,South,Primary Care,Medicaid,33.779,7.938,5.954,0,0,12,12.12,1
+HCP0075,Dr. Morgan 075,S-PCP-01,South District 1,South,Primary Care,Cash,149.281,35.081,22.452,0,0,19,18.24,1
+HCP0076,Dr. Morgan 076,S-PCP-02,South District 2,South,Primary Care,Commercial,131.984,31.016,22.021,0,0,7,8.04,1
+HCP0077,Dr. Morgan 077,S-PCP-01,South District 1,South,Primary Care,Medicare Part D,164.977,38.77,26.363,0,0,13,10.08,2
+HCP0078,Dr. Morgan 078,S-PCP-02,South District 2,South,Primary Care,Medicaid,12.637,2.97,2.227,0,0,6,10.08,1
+HCP0079,Dr. Morgan 079,S-PCP-01,South District 1,South,Primary Care,Cash,294.994,69.323,44.367,0,0,13,18.24,6
+HCP0080,Dr. Morgan 080,S-PCP-02,South District 2,South,Primary Care,Commercial,195.085,45.845,32.55,0,0,9,12.12,3
+HCP0081,Dr. Morgan 081,S-CAR-01,South District 1,South,Cardiology,Medicare Part D,289.067,47.696,32.433,0,0,16,18.24,5
+HCP0082,Dr. Morgan 082,S-CAR-02,South District 2,South,Cardiology,Medicaid,297.122,49.025,36.769,0,0,23,18.24,6
+HCP0083,Dr. Morgan 083,S-CAR-01,South District 1,South,Cardiology,Cash,217.331,35.86,22.95,0,0,12,12.12,3
+HCP0084,Dr. Morgan 084,S-CAR-02,South District 2,South,Cardiology,Commercial,643.61,106.196,75.399,0,0,25,26.4,10
+HCP0085,Dr. Morgan 085,S-CAR-01,South District 1,South,Cardiology,Medicare Part D,413.265,68.189,46.368,0,0,21,24.36,9
+HCP0086,Dr. Morgan 086,S-CAR-02,South District 2,South,Cardiology,Medicaid,383.908,63.345,47.509,0,0,22,22.32,8
+HCP0087,Dr. Morgan 087,S-CAR-01,South District 1,South,Cardiology,Cash,537.768,88.732,56.788,0,0,31,26.4,10
+HCP0088,Dr. Morgan 088,S-CAR-02,South District 2,South,Cardiology,Commercial,633.098,104.461,74.167,0,0,25,26.4,10
+HCP0089,Dr. Morgan 089,S-CAR-01,South District 1,South,Cardiology,Medicare Part D,232.8,38.412,26.12,0,0,17,14.16,4
+HCP0090,Dr. Morgan 090,S-CAR-02,South District 2,South,Cardiology,Medicaid,661.421,109.134,81.851,0,0,22,26.4,10
+HCP0091,Dr. Morgan 091,S-CAR-01,South District 1,South,Cardiology,Cash,329.91,54.435,34.839,0,0,20,20.28,7
+HCP0092,Dr. Morgan 092,S-CAR-02,South District 2,South,Cardiology,Commercial,615.47,101.553,72.102,0,0,26,26.4,10
+HCP0093,Dr. Morgan 093,S-CAR-01,South District 1,South,Cardiology,Medicare Part D,263.876,43.54,29.607,0,0,18,16.2,5
+HCP0094,Dr. Morgan 094,S-CAR-02,South District 2,South,Cardiology,Medicaid,304.018,50.163,37.622,0,0,23,18.24,6
+HCP0095,Dr. Morgan 095,S-CAR-01,South District 1,South,Cardiology,Cash,331.932,54.769,35.052,0,0,14,22.32,7
+HCP0096,Dr. Morgan 096,S-CAR-02,South District 2,South,Cardiology,Commercial,602.978,99.491,70.639,0,0,26,26.4,10
+HCP0097,Dr. Morgan 097,S-CAR-01,South District 1,South,Cardiology,Medicare Part D,473.51,78.129,53.128,0,0,26,24.36,9
+HCP0098,Dr. Morgan 098,S-CAR-02,South District 2,South,Cardiology,Medicaid,346.723,57.209,42.907,0,0,23,22.32,7
+HCP0099,Dr. Morgan 099,S-CAR-01,South District 1,South,Cardiology,Cash,222.269,36.674,23.472,0,0,13,14.16,3
+HCP0100,Dr. Morgan 100,S-CAR-02,South District 2,South,Cardiology,Commercial,311.087,51.329,36.444,0,0,17,20.28,6
+HCP0101,Dr. Morgan 101,S-END-01,South District 1,South,Endocrinology,Medicare Part D,177.62,36.412,24.76,0,0,14,10.08,2
+HCP0102,Dr. Morgan 102,S-END-02,South District 2,South,Endocrinology,Medicaid,233.05,47.775,35.831,0,0,14,14.16,4
+HCP0103,Dr. Morgan 103,S-END-01,South District 1,South,Endocrinology,Cash,307.798,63.099,40.383,3,3,0,24.36,6
+HCP0104,Dr. Morgan 104,S-END-02,South District 2,South,Endocrinology,Commercial,349.537,71.655,50.875,3,3,0,24.36,8
+HCP0105,Dr. Morgan 105,S-END-01,South District 1,South,Endocrinology,Medicare Part D,225.702,46.269,31.463,0,0,9,12.12,4
+HCP0106,Dr. Morgan 106,S-END-02,South District 2,South,Endocrinology,Medicaid,307.165,62.969,47.227,0,0,16,18.24,6
+HCP0107,Dr. Morgan 107,S-END-01,South District 1,South,Endocrinology,Cash,185.521,38.032,24.34,0,0,13,12.12,2
+HCP0108,Dr. Morgan 108,S-END-02,South District 2,South,Endocrinology,Commercial,305.504,62.628,44.466,0,0,11,18.24,6
+HCP0109,Dr. Morgan 109,S-END-01,South District 1,South,Endocrinology,Medicare Part D,212.606,43.584,29.637,0,0,17,12.12,3
+HCP0110,Dr. Morgan 110,S-END-02,South District 2,South,Endocrinology,Medicaid,53.323,10.931,8.198,0,0,8,10.08,1
+HCP0111,Dr. Morgan 111,S-END-01,South District 1,South,Endocrinology,Cash,332.494,68.161,43.623,3,3,0,24.36,7
+HCP0112,Dr. Morgan 112,S-END-02,South District 2,South,Endocrinology,Commercial,218.473,44.787,31.799,0,0,11,14.16,3
+HCP0113,Dr. Morgan 113,S-END-01,South District 1,South,Endocrinology,Medicare Part D,276.403,56.663,38.531,0,0,12,16.2,5
+HCP0114,Dr. Morgan 114,S-END-02,South District 2,South,Endocrinology,Medicaid,229.075,46.96,35.22,0,0,19,14.16,4
+HCP0115,Dr. Morgan 115,S-END-01,South District 1,South,Endocrinology,Cash,322.294,66.07,42.285,3,3,0,24.36,6
+HCP0116,Dr. Morgan 116,S-END-02,South District 2,South,Endocrinology,Commercial,143.638,29.446,20.907,0,0,5,8.04,1
+HCP0117,Dr. Morgan 117,S-END-01,South District 1,South,Endocrinology,Medicare Part D,660.362,135.374,92.054,0,0,19,26.4,10
+HCP0118,Dr. Morgan 118,S-END-02,South District 2,South,Endocrinology,Medicaid,15.398,3.157,2.368,0,0,10,12.12,1
+HCP0119,Dr. Morgan 119,S-END-01,South District 1,South,Endocrinology,Cash,179.476,36.793,23.547,0,0,15,10.08,2
+HCP0120,Dr. Morgan 120,S-END-02,South District 2,South,Endocrinology,Commercial,318.948,65.384,46.423,0,0,19,20.28,6
+HCP0121,Dr. Morgan 121,E-PCP-01,East District 1,East,Primary Care,Medicaid,151.385,35.575,26.682,0,0,3,8.04,2
+HCP0122,Dr. Morgan 122,E-PCP-02,East District 2,East,Primary Care,Cash,295.959,69.55,44.512,0,0,19,18.24,6
+HCP0123,Dr. Morgan 123,E-PCP-01,East District 1,East,Primary Care,Commercial,190.927,44.868,31.856,0,0,9,10.08,2
+HCP0124,Dr. Morgan 124,E-PCP-02,East District 2,East,Primary Care,Medicare Part D,130.63,30.698,20.875,0,2,2,8.04,1
+HCP0125,Dr. Morgan 125,E-PCP-01,East District 1,East,Primary Care,Medicaid,199.059,46.779,35.084,0,0,9,12.12,3
+HCP0126,Dr. Morgan 126,E-PCP-02,East District 2,East,Primary Care,Cash,178.36,41.915,26.825,0,0,10,10.08,2
+HCP0127,Dr. Morgan 127,E-PCP-01,East District 1,East,Primary Care,Commercial,323.65,76.058,54.001,0,0,14,18.24,7
+HCP0128,Dr. Morgan 128,E-PCP-02,East District 2,East,Primary Care,Medicare Part D,251.766,59.165,40.232,0,0,9,14.16,4
+HCP0129,Dr. Morgan 129,E-PCP-01,East District 1,East,Primary Care,Medicaid,202.557,47.601,35.701,0,0,15,12.12,3
+HCP0130,Dr. Morgan 130,E-PCP-02,East District 2,East,Primary Care,Cash,212.271,49.884,31.926,0,0,13,12.12,3
+HCP0131,Dr. Morgan 131,E-PCP-01,East District 1,East,Primary Care,Commercial,400.497,94.117,66.823,0,0,26,22.32,9
+HCP0132,Dr. Morgan 132,E-PCP-02,East District 2,East,Primary Care,Medicare Part D,164.823,38.733,26.339,0,0,10,10.08,2
+HCP0133,Dr. Morgan 133,E-PCP-01,East District 1,East,Primary Care,Medicaid,243.245,57.163,42.872,0,0,12,14.16,4
+HCP0134,Dr. Morgan 134,E-PCP-02,East District 2,East,Primary Care,Cash,346.355,81.394,52.092,0,0,17,20.28,7
+HCP0135,Dr. Morgan 135,E-PCP-01,East District 1,East,Primary Care,Commercial,264.353,62.123,44.107,0,0,14,16.2,5
+HCP0136,Dr. Morgan 136,E-PCP-02,East District 2,East,Primary Care,Medicare Part D,313.33,73.633,50.07,0,0,15,18.24,6
+HCP0137,Dr. Morgan 137,E-PCP-01,East District 1,East,Primary Care,Medicaid,121.169,28.475,21.356,0,0,7,8.04,1
+HCP0138,Dr. Morgan 138,E-PCP-02,East District 2,East,Primary Care,Cash,111.52,26.207,16.773,0,0,11,12.12,1
+HCP0139,Dr. Morgan 139,E-PCP-01,East District 1,East,Primary Care,Commercial,211.771,49.766,35.334,0,0,7,12.12,3
+HCP0140,Dr. Morgan 140,E-PCP-02,East District 2,East,Primary Care,Medicare Part D,233.412,54.852,37.299,0,0,15,14.16,4
+HCP0141,Dr. Morgan 141,E-CAR-01,East District 1,East,Cardiology,Medicaid,364.227,60.097,45.073,0,0,19,20.28,8
+HCP0142,Dr. Morgan 142,E-CAR-02,East District 2,East,Cardiology,Cash,420.478,69.379,44.402,0,0,33,24.36,9
+HCP0143,Dr. Morgan 143,E-CAR-01,East District 1,East,Cardiology,Commercial,204.43,33.731,23.949,0,0,5,10.08,3
+HCP0144,Dr. Morgan 144,E-CAR-02,East District 2,East,Cardiology,Medicare Part D,724.373,119.522,81.275,0,0,27,26.4,10
+HCP0145,Dr. Morgan 145,E-CAR-01,East District 1,East,Cardiology,Medicaid,553.375,91.307,68.48,0,0,28,26.4,10
+HCP0146,Dr. Morgan 146,E-CAR-02,East District 2,East,Cardiology,Cash,367.091,60.57,38.765,0,0,14,22.32,8
+HCP0147,Dr. Morgan 147,E-CAR-01,East District 1,East,Cardiology,Commercial,350.965,57.909,41.116,0,0,13,20.28,8
+HCP0148,Dr. Morgan 148,E-CAR-02,East District 2,East,Cardiology,Medicare Part D,468.869,77.363,52.607,0,0,13,24.36,9
+HCP0149,Dr. Morgan 149,E-CAR-01,East District 1,East,Cardiology,Medicaid,623.405,102.862,77.146,0,0,33,26.4,10
+HCP0150,Dr. Morgan 150,E-CAR-02,East District 2,East,Cardiology,Cash,728.953,120.277,76.977,0,0,23,26.4,10
+HCP0151,Dr. Morgan 151,E-CAR-01,East District 1,East,Cardiology,Commercial,545.889,90.072,63.951,0,0,26,26.4,10
+HCP0152,Dr. Morgan 152,E-CAR-02,East District 2,East,Cardiology,Medicare Part D,385.369,63.586,43.238,0,0,21,22.32,8
+HCP0153,Dr. Morgan 153,E-CAR-01,East District 1,East,Cardiology,Medicaid,580.461,95.776,71.832,0,0,16,26.4,10
+HCP0154,Dr. Morgan 154,E-CAR-02,East District 2,East,Cardiology,Cash,505.833,83.462,53.416,0,0,25,26.4,9
+HCP0155,Dr. Morgan 155,E-CAR-01,East District 1,East,Cardiology,Commercial,621.947,102.621,72.861,0,0,24,26.4,10
+HCP0156,Dr. Morgan 156,E-CAR-02,East District 2,East,Cardiology,Medicare Part D,750.515,123.835,84.208,0,0,23,26.4,10
+HCP0157,Dr. Morgan 157,E-CAR-01,East District 1,East,Cardiology,Medicaid,219.292,36.183,27.137,0,0,18,12.12,3
+HCP0158,Dr. Morgan 158,E-CAR-02,East District 2,East,Cardiology,Cash,240.7,39.715,25.418,0,0,19,14.16,4
+HCP0159,Dr. Morgan 159,E-CAR-01,East District 1,East,Cardiology,Commercial,707.719,116.774,82.909,0,0,15,26.4,10
+HCP0160,Dr. Morgan 160,E-CAR-02,East District 2,East,Cardiology,Medicare Part D,255.622,42.178,28.681,0,0,17,14.16,4
+HCP0161,Dr. Morgan 161,E-END-01,East District 1,East,Endocrinology,Medicaid,199.076,40.811,30.608,0,0,5,10.08,3
+HCP0162,Dr. Morgan 162,E-END-02,East District 2,East,Endocrinology,Cash,335.518,68.781,44.02,0,0,19,20.28,7
+HCP0163,Dr. Morgan 163,E-END-01,East District 1,East,Endocrinology,Commercial,398.341,81.66,57.979,0,0,24,22.32,9
+HCP0164,Dr. Morgan 164,E-END-02,East District 2,East,Endocrinology,Medicare Part D,334.545,68.582,46.636,0,0,18,20.28,7
+HCP0165,Dr. Morgan 165,E-END-01,East District 1,East,Endocrinology,Medicaid,369.909,75.831,56.874,0,0,10,20.28,8
+HCP0166,Dr. Morgan 166,E-END-02,East District 2,East,Endocrinology,Cash,45.164,9.259,5.926,0,0,8,8.04,1
+HCP0167,Dr. Morgan 167,E-END-01,East District 1,East,Endocrinology,Commercial,173.291,35.525,25.223,0,0,12,10.08,2
+HCP0168,Dr. Morgan 168,E-END-02,East District 2,East,Endocrinology,Medicare Part D,342.78,70.27,47.783,0,0,16,20.28,7
+HCP0169,Dr. Morgan 169,E-END-01,East District 1,East,Endocrinology,Medicaid,254.429,52.158,39.118,0,0,21,14.16,4
+HCP0170,Dr. Morgan 170,E-END-02,East District 2,East,Endocrinology,Cash,335.725,68.824,44.047,3,3,0,24.36,7
+HCP0171,Dr. Morgan 171,E-END-01,East District 1,East,Endocrinology,Commercial,345.52,70.832,50.29,0,0,21,18.24,7
+HCP0172,Dr. Morgan 172,E-END-02,East District 2,East,Endocrinology,Medicare Part D,214.657,44.005,29.923,0,0,14,12.12,3
+HCP0173,Dr. Morgan 173,E-END-01,East District 1,East,Endocrinology,Medicaid,298.276,61.147,45.86,0,0,15,16.2,6
+HCP0174,Dr. Morgan 174,E-END-02,East District 2,East,Endocrinology,Cash,327.08,67.051,42.913,3,3,0,24.36,7
+HCP0175,Dr. Morgan 175,E-END-01,East District 1,East,Endocrinology,Commercial,301.411,61.789,43.87,0,0,10,16.2,6
+HCP0176,Dr. Morgan 176,E-END-02,East District 2,East,Endocrinology,Medicare Part D,218.035,44.697,30.394,0,0,13,12.12,3
+HCP0177,Dr. Morgan 177,E-END-01,East District 1,East,Endocrinology,Medicaid,435.653,89.309,66.982,0,0,22,24.36,9
+HCP0178,Dr. Morgan 178,E-END-02,East District 2,East,Endocrinology,Cash,370.657,75.985,48.63,3,3,0,24.36,8
+HCP0179,Dr. Morgan 179,E-END-01,East District 1,East,Endocrinology,Commercial,435.228,89.222,63.347,0,0,20,22.32,9
+HCP0180,Dr. Morgan 180,E-END-02,East District 2,East,Endocrinology,Medicare Part D,721.708,147.95,100.606,0,0,26,26.4,10
+HCP0181,Dr. Morgan 181,W-PCP-01,West District 1,West,Primary Care,Cash,105.959,24.9,15.936,0,0,9,8.04,1
+HCP0182,Dr. Morgan 182,W-PCP-02,West District 2,West,Primary Care,Commercial,190.655,44.804,31.811,0,0,11,10.08,2
+HCP0183,Dr. Morgan 183,W-PCP-01,West District 1,West,Primary Care,Medicare Part D,373.164,87.694,59.632,0,0,15,22.32,8
+HCP0184,Dr. Morgan 184,W-PCP-02,West District 2,West,Primary Care,Medicaid,123.458,29.013,21.76,0,0,9,8.04,1
+HCP0185,Dr. Morgan 185,W-PCP-01,West District 1,West,Primary Care,Cash,268.125,63.009,40.326,0,0,12,16.2,5
+HCP0186,Dr. Morgan 186,W-PCP-02,West District 2,West,Primary Care,Commercial,251.986,59.217,42.044,0,0,16,14.16,4
+HCP0187,Dr. Morgan 187,W-PCP-01,West District 1,West,Primary Care,Medicare Part D,63.28,14.871,10.112,0,0,6,8.04,1
+HCP0188,Dr. Morgan 188,W-PCP-02,West District 2,West,Primary Care,Medicaid,270.144,63.484,47.613,0,0,12,16.2,5
+HCP0189,Dr. Morgan 189,W-PCP-01,West District 1,West,Primary Care,Cash,239.109,56.191,35.962,0,0,17,12.12,4
+HCP0190,Dr. Morgan 190,W-PCP-02,West District 2,West,Primary Care,Commercial,247.52,58.167,41.299,0,0,12,14.16,4
+HCP0191,Dr. Morgan 191,W-PCP-01,West District 1,West,Primary Care,Medicare Part D,173.576,40.79,27.737,0,0,11,10.08,2
+HCP0192,Dr. Morgan 192,W-PCP-02,West District 2,West,Primary Care,Medicaid,244.488,57.455,43.091,0,0,11,14.16,4
+HCP0193,Dr. Morgan 193,W-PCP-01,West District 1,West,Primary Care,Cash,195.345,45.906,29.38,0,0,12,10.08,3
+HCP0194,Dr. Morgan 194,W-PCP-02,West District 2,West,Primary Care,Commercial,205.074,48.192,34.217,0,0,12,12.12,3
+HCP0195,Dr. Morgan 195,W-PCP-01,West District 1,West,Primary Care,Medicare Part D,310.942,73.071,49.689,0,0,13,18.24,6
+HCP0196,Dr. Morgan 196,W-PCP-02,West District 2,West,Primary Care,Medicaid,138.619,32.576,24.432,0,0,4,8.04,1
+HCP0197,Dr. Morgan 197,W-PCP-01,West District 1,West,Primary Care,Cash,93.468,21.965,14.058,0,0,7,8.04,1
+HCP0198,Dr. Morgan 198,W-PCP-02,West District 2,West,Primary Care,Commercial,301.622,70.881,50.326,0,0,14,16.2,6
+HCP0199,Dr. Morgan 199,W-PCP-01,West District 1,West,Primary Care,Medicare Part D,244.582,57.477,39.084,0,0,12,14.16,4
+HCP0200,Dr. Morgan 200,W-PCP-02,West District 2,West,Primary Care,Medicaid,251.016,58.989,44.242,4,4,0,22.32,4
+HCP0201,Dr. Morgan 201,W-CAR-01,West District 1,West,Cardiology,Cash,273.05,45.053,28.834,0,0,17,16.2,5
+HCP0202,Dr. Morgan 202,W-CAR-02,West District 2,West,Cardiology,Commercial,352.404,58.147,41.284,0,0,17,22.32,8
+HCP0203,Dr. Morgan 203,W-CAR-01,West District 1,West,Cardiology,Medicare Part D,266.091,43.905,29.855,0,0,15,16.2,5
+HCP0204,Dr. Morgan 204,W-CAR-02,West District 2,West,Cardiology,Medicaid,208.397,34.386,25.789,0,0,6,12.12,3
+HCP0205,Dr. Morgan 205,W-CAR-01,West District 1,West,Cardiology,Cash,319.259,52.678,33.714,0,0,19,18.24,6
+HCP0206,Dr. Morgan 206,W-CAR-02,West District 2,West,Cardiology,Commercial,703.411,116.063,82.405,0,0,32,26.4,10
+HCP0207,Dr. Morgan 207,W-CAR-01,West District 1,West,Cardiology,Medicare Part D,424.675,70.071,47.649,0,0,20,24.36,9
+HCP0208,Dr. Morgan 208,W-CAR-02,West District 2,West,Cardiology,Medicaid,438.094,72.286,54.214,0,0,28,24.36,9
+HCP0209,Dr. Morgan 209,W-CAR-01,West District 1,West,Cardiology,Cash,182.419,30.099,19.263,0,0,13,10.08,2
+HCP0210,Dr. Morgan 210,W-CAR-02,West District 2,West,Cardiology,Commercial,290.658,47.959,34.051,0,0,21,18.24,5
+HCP0211,Dr. Morgan 211,W-CAR-01,West District 1,West,Cardiology,Medicare Part D,243.604,40.195,27.332,0,0,15,14.16,4
+HCP0212,Dr. Morgan 212,W-CAR-02,West District 2,West,Cardiology,Medicaid,430.371,71.011,53.258,0,0,17,24.36,9
+HCP0213,Dr. Morgan 213,W-CAR-01,West District 1,West,Cardiology,Cash,414.445,68.383,43.765,0,0,24,24.36,9
+HCP0214,Dr. Morgan 214,W-CAR-02,West District 2,West,Cardiology,Commercial,604.197,99.693,70.782,0,0,26,26.4,10
+HCP0215,Dr. Morgan 215,W-CAR-01,West District 1,West,Cardiology,Medicare Part D,208.689,34.434,23.415,0,0,10,12.12,3
+HCP0216,Dr. Morgan 216,W-CAR-02,West District 2,West,Cardiology,Medicaid,322.494,53.211,39.909,0,0,15,20.28,7
+HCP0217,Dr. Morgan 217,W-CAR-01,West District 1,West,Cardiology,Cash,348.005,57.421,36.749,0,0,23,22.32,7
+HCP0218,Dr. Morgan 218,W-CAR-02,West District 2,West,Cardiology,Commercial,767.727,126.675,89.939,0,0,26,26.4,10
+HCP0219,Dr. Morgan 219,W-CAR-01,West District 1,West,Cardiology,Medicare Part D,375.558,61.967,42.138,0,0,20,22.32,8
+HCP0220,Dr. Morgan 220,W-CAR-02,West District 2,West,Cardiology,Medicaid,550.606,90.85,68.138,0,0,32,26.4,10
+HCP0221,Dr. Morgan 221,W-END-01,West District 1,West,Endocrinology,Cash,348.36,71.414,45.705,0,0,16,20.28,7
+HCP0222,Dr. Morgan 222,W-END-02,West District 2,West,Endocrinology,Commercial,345.833,70.896,50.336,0,0,15,20.28,7
+HCP0223,Dr. Morgan 223,W-END-01,West District 1,West,Endocrinology,Medicare Part D,167.777,34.394,23.388,0,0,11,10.08,2
+HCP0224,Dr. Morgan 224,W-END-02,West District 2,West,Endocrinology,Medicaid,200.751,41.154,30.865,0,0,8,10.08,3
+HCP0225,Dr. Morgan 225,W-END-01,West District 1,West,Endocrinology,Cash,274.584,56.29,36.025,0,0,9,16.2,5
+HCP0226,Dr. Morgan 226,W-END-02,West District 2,West,Endocrinology,Commercial,350.762,71.906,51.053,3,3,0,24.36,8
+HCP0227,Dr. Morgan 227,W-END-01,West District 1,West,Endocrinology,Medicare Part D,350.303,71.812,48.832,0,0,15,20.28,8
+HCP0228,Dr. Morgan 228,W-END-02,West District 2,West,Endocrinology,Medicaid,275.507,56.479,42.359,0,0,12,16.2,5
+HCP0229,Dr. Morgan 229,W-END-01,West District 1,West,Endocrinology,Cash,388.369,79.616,50.954,0,0,27,22.32,9
+HCP0230,Dr. Morgan 230,W-END-02,West District 2,West,Endocrinology,Commercial,345.19,70.764,50.242,3,3,0,24.36,7
+HCP0231,Dr. Morgan 231,W-END-01,West District 1,West,Endocrinology,Medicare Part D,307.686,63.076,42.891,0,0,12,18.24,6
+HCP0232,Dr. Morgan 232,W-END-02,West District 2,West,Endocrinology,Medicaid,307.231,62.982,47.237,0,0,19,18.24,6
+HCP0233,Dr. Morgan 233,W-END-01,West District 1,West,Endocrinology,Cash,224.187,45.958,29.413,5,5,0,22.32,4
+HCP0234,Dr. Morgan 234,W-END-02,West District 2,West,Endocrinology,Commercial,71.743,14.707,10.442,0,0,17,16.2,1
+HCP0235,Dr. Morgan 235,W-END-01,West District 1,West,Endocrinology,Medicare Part D,361.472,74.102,50.389,0,0,30,20.28,8
+HCP0236,Dr. Morgan 236,W-END-02,West District 2,West,Endocrinology,Medicaid,387.384,79.414,59.56,0,0,11,22.32,8
+HCP0237,Dr. Morgan 237,W-END-01,West District 1,West,Endocrinology,Cash,348.013,71.343,45.659,3,3,0,24.36,7
+HCP0238,Dr. Morgan 238,W-END-02,West District 2,West,Endocrinology,Commercial,275.31,56.438,40.071,0,0,18,16.2,5
+HCP0239,Dr. Morgan 239,W-END-01,West District 1,West,Endocrinology,Medicare Part D,272.974,55.96,38.053,0,0,18,16.2,5
+HCP0240,Dr. Morgan 240,W-END-02,West District 2,West,Endocrinology,Medicaid,153.046,31.374,23.531,0,1,5,8.04,2

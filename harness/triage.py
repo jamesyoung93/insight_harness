@@ -20,7 +20,7 @@ RETRIEVAL, DESCRIPTIVE, DIAGNOSTIC, CAUSAL, PREDICTIVE, OUT_OF_SCOPE = (
 
 _CAUSAL = re.compile(r"\b(why|caused?|drove|drive[sn]?|impact of|effect of|because of|due to|roi of)\b", re.I)
 _DIAGNOSTIC = re.compile(
-    r"\b(account for|break ?down|decompos|which segments?|which regions?|"
+    r"\b(account for|break ?down|decompos|which regions?|"
     r"which specialties|which territories|which districts|which payer channels|"
     r"contribut|where did)\b", re.I)
 _RETRIEVAL = re.compile(r"\b(list|find|show me the accounts|which accounts|top \d+|whitespace|no activity)\b", re.I)
@@ -158,6 +158,22 @@ def _find_event(q: str) -> str | None:
     return best if best_hits >= 1 else None
 
 
+def _find_breakdown_dimension(q: str) -> str | None:
+    """Return the dimension the question explicitly asks to decompose."""
+    ql = q.lower()
+    phrases = {
+        "payer_channel": ("payer channel", "payer channels"),
+        "specialty": ("specialty", "specialties"),
+        "territory": ("territory", "territories"),
+        "district": ("district", "districts"),
+        "region": ("region", "regions"),
+    }
+    for dimension, names in phrases.items():
+        if any(re.search(rf"\b{re.escape(name)}\b", ql) for name in names):
+            return dimension
+    return None
+
+
 def parse(question: str) -> Intent:
     q = question.strip()
     metric = _find_metric(q)
@@ -174,19 +190,22 @@ def parse(question: str) -> Intent:
     if _CAUSAL.search(q):
         event = _find_event(q)
         if event:
-            default_metric = sl.EVENTS[event].get("metrics", ["trx"])[0]
+            default_metric = sl.EVENTS[event].get(
+                "default_metric", sl.EVENTS[event].get("metrics", ["trx"])[0])
             return Intent(q, CAUSAL, metric or default_metric, filters, event_id=event)
         return Intent(q, CAUSAL, metric, filters, reason=refusal_reason(CAUSAL))
 
     if _DIAGNOSTIC.search(q):
         if metric is None:
             return Intent(q, OUT_OF_SCOPE, reason=refusal_reason(OUT_OF_SCOPE))
-        return Intent(q, DIAGNOSTIC, metric, filters, window=window, compare_basis=basis)
+        return Intent(q, DIAGNOSTIC, metric, filters,
+                      dim_breakdown=_find_breakdown_dimension(q),
+                      window=window, compare_basis=basis)
 
     if _RETRIEVAL.search(q):
         ql = q.lower()
         template = "whitespace" if ("whitespace" in ql or "no activity" in ql or "no calls" in ql) else "top_accounts"
-        return Intent(q, RETRIEVAL, metric or "revenue", filters, template=template)
+        return Intent(q, RETRIEVAL, metric or "trx", filters, template=template)
 
     if metric is not None:
         return Intent(q, DESCRIPTIVE, metric, filters, trend=bool(_TREND.search(q)),

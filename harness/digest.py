@@ -16,12 +16,15 @@ from typing import Iterable, Mapping, Sequence
 
 import pandas as pd
 
-from . import pipeline, semantic_layer as sl, services, triage
-from .digest_store import DigestHistoryStore, history_fingerprint
+from . import pipeline, semantic_layer as sl, services, tiles, triage
+from .digest_store import (DigestHistoryStore, InMemoryDigestHistoryStore,
+                           history_fingerprint)
 from .provenance import AnswerArtifact, TIER_ABSTAINED
 
 
-DIGEST_VERSION = 2
+DIGEST_VERSION = 3
+MOVEMENT_RANKING_METHOD = "latest_vs_prior_six_month_mean"
+DIVERGENCE_RANKING_METHOD = "material_definition_fork_relative_difference"
 _TYPE_WEIGHT = {"anomaly": 1.0, "watch": 1.25, "divergence": 1.15, "event": 1.1}
 DIGEST_METRICS = ("trx", "nrx", "nbrx", "trx_share", "calls", "samples",
                   "speaker_attendance", "new_writers")
@@ -54,7 +57,8 @@ def _filters_dict(items: tuple[tuple[str, str | tuple[str, ...]], ...]) -> dict:
 
 def _metric_family(metric: str) -> str:
     definition = sl.METRICS[metric]
-    return str(definition.get("family") or definition.get("metric_family") or metric)
+    return str(definition.get("digest_family") or definition.get("family")
+               or definition.get("metric_family") or metric)
 
 
 def governance_fingerprint() -> str:
@@ -108,6 +112,9 @@ class SignalCandidate:
     facts: MovementFacts | None = None
     impact_score: float = 0.0
     scope_priority: float = 1.0
+    scope_rank: int = 1
+    window: str | None = None
+    basis: str | None = None
     event_id: str | None = None
     event_name: str | None = None
     fork_label: str | None = None
@@ -116,6 +123,8 @@ class SignalCandidate:
 
     @property
     def semantic_key(self) -> str:
+        """Identity of the computed signal, independent of drill-through UI controls."""
+
         return _stable_hash({
             "kind": self.kind,
             "metric": self.metric,
@@ -150,18 +159,34 @@ class DigestItemArtifact:
     narration: dict = field(default_factory=dict, compare=False)
 
     @property
-    def result_hash(self) -> str:
+    def fact_hash(self) -> str:
         return _stable_hash({
             "signal_key": self.candidate.semantic_key,
             "answer_hash": self.candidate.artifact.result_hash,
             "facts": self.candidate.facts.to_dict() if self.candidate.facts else None,
+            "ranking_method": self.ranking_method,
             "fork": [self.candidate.fork_label, self.candidate.fork_value,
                      self.candidate.fork_relative_difference],
+            "novelty_factor": round(self.novelty_factor, 8),
+            "score": round(self.score, 8),
+        })
+
+    @property
+    def result_hash(self) -> str:
+        """Backward-compatible name for the deterministic computed-fact hash."""
+
+        return self.fact_hash
+
+    @property
+    def presentation_hash(self) -> str:
+        """Hash visible wording separately from deterministic computed facts."""
+
+        return _stable_hash({
+            "fact_hash": self.fact_hash,
             "template_headline": self.template_headline,
             "impact_text": self.impact_text,
             "breakdown_question": self.breakdown_question,
-            "novelty_factor": round(self.novelty_factor, 8),
-            "score": round(self.score, 8),
+            "narration": self.narration,
         })
 
     @property
@@ -170,6 +195,31 @@ class DigestItemArtifact:
 
     def with_narration(self, text: str, metadata: dict) -> "DigestItemArtifact":
         return replace(self, narration={**metadata, "text": text})
+
+    @property
+    def ranking_method(self) -> dict:
+        """Describe only the deterministic facts used to rank this signal."""
+
+        if self.candidate.kind == "divergence":
+            return {
+                "id": DIVERGENCE_RANKING_METHOD,
+                "description": (
+                    "Absolute relative difference between the governed result and a "
+                    "material alternate definition."
+                ),
+                "uses_drillthrough_window": False,
+                "uses_drillthrough_basis": False,
+            }
+        return {
+            "id": MOVEMENT_RANKING_METHOD,
+            "description": (
+                "Latest observed month compared with the mean of the preceding six months."
+            ),
+            "latest_periods": 1,
+            "baseline_periods": 6,
+            "uses_drillthrough_window": False,
+            "uses_drillthrough_basis": False,
+        }
 
     def fact_payload(self) -> dict:
         """The bounded JSON payload an optional narrator is allowed to see."""
@@ -192,6 +242,13 @@ class DigestItemArtifact:
             "impact_text": self.impact_text,
             "underlying_answer_hash": self.candidate.artifact.result_hash,
             "data_version": self.candidate.artifact.data_version,
+            "ranking_method": self.ranking_method,
+            "drillthrough_context": {
+                "source": self.candidate.source,
+                "variant": self.candidate.variant,
+                "window": self.candidate.window,
+                "basis": self.candidate.basis,
+            },
         }
 
     def to_dict(self) -> dict:
@@ -201,7 +258,9 @@ class DigestItemArtifact:
             "novelty_factor": self.novelty_factor,
             "normalized_impact": self.candidate.impact_score,
             "score": self.score,
-            "result_hash": self.result_hash,
+            "fact_hash": self.fact_hash,
+            "presentation_hash": self.presentation_hash,
+            "result_hash": self.fact_hash,
             "breakdown_question": self.breakdown_question,
             "narration": self.narration,
             "underlying_answer": json.loads(self.candidate.artifact.to_json()),
@@ -220,6 +279,7 @@ class DigestArtifact:
     governance_fingerprint: str
     input_fingerprint: str
     history_fingerprint: str
+    owner_namespace: str | None
     scanned_series: int
     metric_families: int
     items: tuple[DigestItemArtifact, ...]
@@ -235,9 +295,21 @@ class DigestArtifact:
             "governance_fingerprint": self.governance_fingerprint,
             "input_fingerprint": self.input_fingerprint,
             "history_fingerprint": self.history_fingerprint,
+            "owner_namespace": self.owner_namespace,
             "scanned_series": self.scanned_series,
             "metric_families": self.metric_families,
             "items": [item.result_hash for item in self.items],
+        })
+
+    @property
+    def fact_hash(self) -> str:
+        return self.result_hash
+
+    @property
+    def presentation_hash(self) -> str:
+        return _stable_hash({
+            "fact_hash": self.fact_hash,
+            "items": [item.presentation_hash for item in self.items],
         })
 
     def to_dict(self) -> dict:
@@ -249,10 +321,13 @@ class DigestArtifact:
             "governance_fingerprint": self.governance_fingerprint,
             "input_fingerprint": self.input_fingerprint,
             "history_fingerprint": self.history_fingerprint,
+            "owner_namespace": self.owner_namespace,
             "scanned_series": self.scanned_series,
             "metric_families": self.metric_families,
             "items": [item.to_dict() for item in self.items],
-            "result_hash": self.result_hash,
+            "fact_hash": self.fact_hash,
+            "presentation_hash": self.presentation_hash,
+            "result_hash": self.fact_hash,
         }
 
     def to_json(self) -> str:
@@ -359,7 +434,10 @@ def _movement(artifact: AnswerArtifact) -> MovementFacts | None:
         return None
     series = pd.to_numeric(chart[columns[0]], errors="coerce")
     valid = pd.DataFrame({"month": chart["month"].astype(str), "value": series}).dropna()
-    if len(valid) < 5:
+    # The digest ranking contract is fixed: one latest month compared with
+    # exactly the six preceding months. Saved-watch controls are deliberately
+    # not inputs to this computation; they are carried only for drill-through.
+    if len(valid) < 7:
         return None
     history = valid["value"].iloc[-7:-1]
     latest = float(valid["value"].iloc[-1])
@@ -384,27 +462,45 @@ def normalized_impact(facts: MovementFacts) -> float:
     return round(0.65 * z_component + 0.35 * relative_component, 8)
 
 
-def _series_specs(metric: str, persona_scope: Mapping) -> list[tuple[dict, float]]:
+def _scope_contains(filters: Mapping, persona_scope: Mapping) -> bool:
+    """Whether a candidate is explicitly inside every persona-scope dimension."""
+
+    if not persona_scope:
+        return True
+    left = _normal_scope(filters)
+    right = _normal_scope(persona_scope)
+    for dimension, expected in right.items():
+        if dimension not in left:
+            return False
+        actual_values = set(left[dimension] if isinstance(left[dimension], tuple)
+                            else (left[dimension],))
+        expected_values = set(expected if isinstance(expected, tuple) else (expected,))
+        if not actual_values.intersection(expected_values):
+            return False
+    return True
+
+
+def _series_specs(metric: str, persona_scope: Mapping) -> list[tuple[dict, float, int]]:
     source = sl.METRICS[metric]["default_source"]
     df = sl.load_fact(source)
     scoped = sl.apply_filters(df, dict(persona_scope))
-    specs: list[tuple[dict, float]] = []
+    specs: list[tuple[dict, float, int]] = []
     if persona_scope:
-        specs.extend([(dict(persona_scope), 1.0), ({}, 0.60)])
+        specs.extend([(dict(persona_scope), 1.0, 2), ({}, 0.60, 1)])
     else:
-        specs.append(({}, 1.0))
+        specs.append(({}, 1.0, 1))
     for dimension in DIGEST_DIMENSIONS:
         if dimension in persona_scope or dimension not in scoped.columns:
             continue
         for value in sorted(str(item) for item in scoped[dimension].dropna().unique()):
             filters = dict(persona_scope)
             filters[dimension] = value
-            specs.append((filters, 1.0))
-    deduped: dict[tuple, tuple[dict, float]] = {}
-    for filters, priority in specs:
+            specs.append((filters, 1.0, 2 if persona_scope else 1))
+    deduped: dict[tuple, tuple[dict, float, int]] = {}
+    for filters, priority, scope_rank in specs:
         key = _filter_items(filters)
-        if key not in deduped or priority > deduped[key][1]:
-            deduped[key] = (filters, priority)
+        if key not in deduped or (scope_rank, priority) > (deduped[key][2], deduped[key][1]):
+            deduped[key] = (filters, priority, scope_rank)
     return [deduped[key] for key in sorted(deduped, key=str)]
 
 
@@ -416,29 +512,36 @@ def scan_candidates(*, persona: str, scope: Mapping | None = None,
         raise ValueError("persona must be a non-empty string")
     persona_scope = _validate_scope(scope or {})
     candidates: list[SignalCandidate] = []
-    artifacts: dict[tuple, tuple[AnswerArtifact, MovementFacts | None, float]] = {}
+    artifacts: dict[tuple, tuple[AnswerArtifact, MovementFacts | None, float, int]] = {}
     active_metrics = tuple(metric for metric in DIGEST_METRICS if metric in sl.METRICS)
     families = {_metric_family(metric) for metric in active_metrics}
 
-    def evaluate(metric: str, filters: Mapping, priority: float,
+    def evaluate(metric: str, filters: Mapping, priority: float, scope_rank: int,
                  requested_source: str | None = None,
-                 requested_variant: str | None = None) -> tuple[AnswerArtifact, MovementFacts | None]:
+                 requested_variant: str | None = None,
+                 window: str | None = None, basis: str | None = None
+                 ) -> tuple[AnswerArtifact, MovementFacts | None]:
+        # Window and comparison basis describe the saved question to reopen;
+        # the ranking scan always computes latest vs the prior six-month mean.
+        del window, basis
         key = (metric, _filter_items(filters), requested_source, requested_variant)
         if key not in artifacts:
             artifact = _answer_artifact(metric, filters, requested_source, requested_variant)
-            artifacts[key] = (artifact, _movement(artifact), priority)
+            artifacts[key] = (artifact, _movement(artifact), priority, scope_rank)
         else:
-            artifact, facts, old_priority = artifacts[key]
-            if priority > old_priority:
-                artifacts[key] = (artifact, facts, priority)
+            artifact, facts, old_priority, old_rank = artifacts[key]
+            if (scope_rank, priority) > (old_rank, old_priority):
+                artifacts[key] = (artifact, facts, priority, scope_rank)
         return artifacts[key][0], artifacts[key][1]
 
     def add_movement(kind: str, metric: str, filters: Mapping, priority: float,
+                     scope_rank: int,
                      *, event_id: str | None = None, event_name: str | None = None,
                      requested_source: str | None = None,
-                     requested_variant: str | None = None) -> None:
-        artifact, facts = evaluate(metric, filters, priority,
-                                   requested_source, requested_variant)
+                     requested_variant: str | None = None,
+                     window: str | None = None, basis: str | None = None) -> None:
+        artifact, facts = evaluate(metric, filters, priority, scope_rank,
+                                   requested_source, requested_variant, window, basis)
         if facts is None or abs(facts.absolute_change) < 1e-12:
             return
         resolution = artifact.resolution
@@ -447,22 +550,39 @@ def scan_candidates(*, persona: str, scope: Mapping | None = None,
             filters=_filter_items(filters), source=resolution.source,
             variant=resolution.variant, artifact=artifact, facts=facts,
             impact_score=normalized_impact(facts), scope_priority=priority,
+            scope_rank=scope_rank, window=window, basis=basis,
             event_id=event_id, event_name=event_name,
         ))
 
     for metric in active_metrics:
-        for filters, priority in _series_specs(metric, persona_scope):
-            add_movement("anomaly", metric, filters, priority)
+        for filters, priority, scope_rank in _series_specs(metric, persona_scope):
+            add_movement("anomaly", metric, filters, priority, scope_rank)
 
     for watch in watches:
+        # Diagnostic and retrieval watches require their own class-specific
+        # evaluators. Treating either as a descriptive movement would invent a
+        # different question, so the digest deliberately declines them.
+        if watch.get("question_class", triage.DESCRIPTIVE) != triage.DESCRIPTIVE:
+            continue
         metric = watch.get("metric")
         if metric not in sl.METRICS:
             continue
         filters = _validate_scope(watch.get("filters") or {})
-        priority = 1.0 if _scope_compatible(filters, persona_scope) else 0.45
-        add_movement("watch", metric, filters, priority,
+        in_scope = _scope_contains(filters, persona_scope)
+        compatible = _scope_compatible(filters, persona_scope)
+        if not persona_scope:
+            priority, scope_rank = 1.0, 1
+        elif in_scope:
+            priority, scope_rank = 1.0, 2
+        elif compatible:
+            priority, scope_rank = 0.60, 1
+        else:
+            priority, scope_rank = 0.45, 0
+        add_movement("watch", metric, filters, priority, scope_rank,
                      requested_source=watch.get("source"),
-                     requested_variant=watch.get("variant"))
+                     requested_variant=watch.get("variant"),
+                     window=_window_control(watch.get("window") or watch.get("window_spec")),
+                     basis=_basis_code(watch.get("compare_basis") or watch.get("basis")))
 
     for event_id, event in sorted(sl.EVENTS.items()):
         merged = _merge_scopes(persona_scope, event.get("scope", {}))
@@ -474,13 +594,14 @@ def scan_candidates(*, persona: str, scope: Mapping | None = None,
             latest = sl.months(sl.METRICS[metric]["default_source"])[-1]
             if str(event.get("start", "")) <= latest:
                 add_movement("event", metric, merged, 1.05,
+                             2 if persona_scope else 1,
                              event_id=event_id, event_name=event.get("name", event_id))
 
     # Material forks become their own candidates.  Each unique evaluated
     # metric/scope is inspected exactly once, even if both anomaly and watch
     # signals point to it.
     for (metric, filter_items, _requested_source, _requested_variant), \
-            (artifact, facts, priority) in sorted(
+            (artifact, facts, priority, scope_rank) in sorted(
             artifacts.items(), key=lambda item: str(item[0])):
         for fork in artifact.divergence:
             if not fork.get("material"):
@@ -492,6 +613,7 @@ def scan_candidates(*, persona: str, scope: Mapping | None = None,
                 filters=filter_items, source=artifact.resolution.source,
                 variant=artifact.resolution.variant, artifact=artifact, facts=facts,
                 impact_score=round(impact, 8), scope_priority=priority,
+                scope_rank=scope_rank,
                 fork_label=str(fork.get("label") or fork.get("fork")),
                 fork_value=float(fork["value"]),
                 fork_relative_difference=relative,
@@ -517,7 +639,7 @@ def _candidate_score(candidate: SignalCandidate, novelty: float) -> float:
 
 def rank_candidates(candidates: Sequence[SignalCandidate], recent_keys: Iterable[str] = (),
                     limit: int = 3) -> list[tuple[SignalCandidate, float, float]]:
-    """Rank deterministically and admit at most one item per metric family."""
+    """Rank scope tier first, then score; admit one item per digest family."""
 
     recent = tuple(recent_keys)
     scored = [
@@ -525,7 +647,7 @@ def rank_candidates(candidates: Sequence[SignalCandidate], recent_keys: Iterable
          _candidate_score(candidate, novelty_factor(candidate, recent)))
         for candidate in candidates
     ]
-    scored.sort(key=lambda row: (-row[2], row[0].semantic_key))
+    scored.sort(key=lambda row: (-row[0].scope_rank, -row[2], row[0].semantic_key))
     selected: list[tuple[SignalCandidate, float, float]] = []
     families: set[str] = set()
     for row in scored:
@@ -541,6 +663,36 @@ def rank_candidates(candidates: Sequence[SignalCandidate], recent_keys: Iterable
 def _scope_label(filters: Mapping) -> str:
     label = sl.scope_string(dict(filters))
     return "All scopes" if label == "all scopes" else label
+
+
+def _window_control(value) -> str | None:
+    if value in (None, "", "Latest"):
+        return None
+    if isinstance(value, Mapping) and value.get("kind") == "last_n":
+        value = value.get("n")
+    if isinstance(value, int):
+        return next((name for name, months in tiles.WINDOW_CONTROLS.items()
+                     if months == value), f"R{value}M")
+    text = str(value)
+    aliases = {name.lower(): name for name in tiles.WINDOW_CONTROLS}
+    return aliases.get(text.lower(), text)
+
+
+def _window_months(value) -> int | None:
+    control = _window_control(value)
+    return tiles.WINDOW_CONTROLS.get(control) if control else None
+
+
+def _basis_code(value) -> str | None:
+    if value in (None, ""):
+        return None
+    text = str(value)
+    if text in triage.BASIS_LABELS:
+        return text
+    if text in tiles.BASIS_CONTROLS:
+        return tiles.BASIS_CONTROLS[text]
+    aliases = {label.lower(): code for label, code in tiles.BASIS_CONTROLS.items()}
+    return aliases.get(text.lower(), text)
 
 
 def _headline(candidate: SignalCandidate) -> tuple[str, str]:
@@ -571,7 +723,9 @@ def _headline(candidate: SignalCandidate) -> tuple[str, str]:
 
 def _make_item(candidate: SignalCandidate, novelty: float, score: float) -> DigestItemArtifact:
     headline, impact = _headline(candidate)
-    question = services.breakdown_question(candidate.metric, candidate.filter_dict)
+    question = services.breakdown_question(
+        candidate.metric, candidate.filter_dict,
+        _window_months(candidate.window), _basis_code(candidate.basis))
     return DigestItemArtifact(
         candidate=candidate, template_headline=headline, impact_text=impact,
         breakdown_question=question, novelty_factor=novelty, score=score,
@@ -584,17 +738,19 @@ def _watch_fingerprint(watches: Sequence[dict]) -> str:
         "filters": _normal_scope(watch.get("filters") or {}),
         "source": watch.get("source"),
         "variant": watch.get("variant"),
-        "window": watch.get("window") or watch.get("window_spec"),
-        "compare_basis": watch.get("compare_basis") or watch.get("basis"),
+        "window": _window_control(watch.get("window") or watch.get("window_spec")),
+        "compare_basis": _basis_code(watch.get("compare_basis") or watch.get("basis")),
         "trend": watch.get("trend"),
+        "question_class": watch.get("question_class", triage.DESCRIPTIVE),
     } for watch in watches]
     return _stable_hash(sorted(stable, key=lambda item: json.dumps(item, sort_keys=True)))
 
 
 def build_digest(*, persona: str, scope: Mapping | None = None,
                  watches: Sequence[dict] | None = None,
-                 store: DigestHistoryStore | None = None, limit: int = 3,
-                 record: bool = True) -> DigestArtifact:
+                 store: DigestHistoryStore | InMemoryDigestHistoryStore | None = None,
+                 limit: int = 3, record: bool = True,
+                 owner_namespace: str | None = None) -> DigestArtifact:
     """Build one stable snapshot and record it at most once.
 
     A previously recorded snapshot wins for the same input key, preventing a
@@ -602,8 +758,11 @@ def build_digest(*, persona: str, scope: Mapping | None = None,
     """
 
     if watches is None:
-        watches = services.load_watchlist()
-    watches = tuple(watches)
+        watches = ()
+    watches = tuple(
+        watch for watch in watches
+        if watch.get("question_class", triage.DESCRIPTIVE) == triage.DESCRIPTIVE
+    )
     normalized_scope = _validate_scope(scope or {})
     store = store or DigestHistoryStore()
     data_version = sl.data_version()
@@ -616,6 +775,7 @@ def build_digest(*, persona: str, scope: Mapping | None = None,
         "persona": persona,
         "scope": normalized_scope,
         "inputs": input_fingerprint,
+        "owner_namespace": owner_namespace,
         "limit": int(limit),
     })
 
@@ -635,7 +795,11 @@ def build_digest(*, persona: str, scope: Mapping | None = None,
                                        _candidate_score(candidate, novelty_factor(candidate, recent_keys))))
                     for candidate in chosen]
     else:
-        recent = store.recent(persona=persona, exclude_key=digest_key, limit=5)
+        recent = store.recent(
+            persona=persona, scope=normalized_scope,
+            input_fingerprint=input_fingerprint,
+            owner_namespace=owner_namespace,
+            exclude_key=digest_key, limit=5)
         recent_keys = tuple(key for entry in recent for key in entry.get("item_keys", []))
         history_hash = history_fingerprint(recent)
         selected = rank_candidates(scan.candidates, recent_keys, limit=limit)
@@ -646,6 +810,7 @@ def build_digest(*, persona: str, scope: Mapping | None = None,
         digest_key=digest_key, persona=persona, scope=normalized_scope,
         data_version=data_version, governance_fingerprint=governance,
         input_fingerprint=input_fingerprint, history_fingerprint=history_hash,
+        owner_namespace=owner_namespace,
         scanned_series=scan.scanned_series, metric_families=scan.metric_families,
         items=items,
     )
@@ -653,6 +818,7 @@ def build_digest(*, persona: str, scope: Mapping | None = None,
     if record and existing is None:
         history_record = {
             "digest_key": digest_key,
+            "owner_namespace": owner_namespace,
             "persona": persona,
             "scope": normalized_scope,
             "data_version": data_version,
@@ -661,6 +827,7 @@ def build_digest(*, persona: str, scope: Mapping | None = None,
             "history_fingerprint": history_hash,
             "recent_item_keys": list(recent_keys),
             "item_keys": [item.candidate.semantic_key for item in items],
+            "item_fact_hashes": [item.fact_hash for item in items],
             "result_hash": artifact.result_hash,
             "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
@@ -669,5 +836,6 @@ def build_digest(*, persona: str, scope: Mapping | None = None,
             # A concurrent rerun recorded first.  Re-enter through the stable
             # snapshot path so both callers return the same selection.
             return build_digest(persona=persona, scope=normalized_scope,
-                                watches=watches, store=store, limit=limit, record=False)
+                                watches=watches, store=store, limit=limit, record=False,
+                                owner_namespace=owner_namespace)
     return artifact

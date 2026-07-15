@@ -12,7 +12,8 @@ _BASIS_STEPS = {"prior_month": 1, "prior_quarter": 3, "yoy": 12}
 
 
 def _comparison_payload(basis: str, current_month: str, current_value: float,
-                        source_months: list[str], monthly_values: dict) -> dict:
+                        source_months: list[str], monthly_values: dict,
+                        *, ratio: bool = False) -> dict:
     """Return the stable comparison contract consumed by tiles and other views.
 
     Reference values are aligned to the current month rather than plotted at
@@ -30,6 +31,7 @@ def _comparison_payload(basis: str, current_month: str, current_value: float,
         "reference_value": None,
         "delta": None,
         "delta_pct": None,
+        "delta_pp": None,
     }
     try:
         reference_month = str(pd.Period(current_month, freq="M")
@@ -46,6 +48,7 @@ def _comparison_payload(basis: str, current_month: str, current_value: float,
         "reference_value": reference_value,
         "delta": delta,
         "delta_pct": delta / reference_value if reference_value else None,
+        "delta_pp": delta * 100 if ratio else None,
     })
     return payload
 
@@ -58,19 +61,63 @@ def _window_refusal(intent: Intent, res: sl.Resolution, src_months: list) -> Ans
                          headline=f"Declined: {src} has no data for {intent.window.label}; "
                                   f"it covers {src_months[0]} through {src_months[-1]}.")
     art.resolution = res
-    kw = services.PRIMARY_KEYWORD.get(res.metric, "revenue")
+    kw = services.PRIMARY_KEYWORD.get(res.metric, "TRx")
     art.extras["reframes"] = [f"Trend {kw} by month", f"What is {kw} in the West region?"]
     return art
+
+
+def _no_data_refusal(intent: Intent, res: sl.Resolution, detail: str = "") -> AnswerArtifact:
+    scope = sl.scope_string(intent.filters)
+    suffix = f" {detail}" if detail else ""
+    art = AnswerArtifact(
+        intent.question, intent.question_class, TIER_ABSTAINED, "abstention",
+        headline=(f"Declined: no governed observations exist for {scope} in "
+                  f"{sl.SOURCES[res.source]['name']}.{suffix}"),
+        resolution=res,
+    )
+    keyword = services.PRIMARY_KEYWORD.get(res.metric, "TRx")
+    art.extras["reframes"] = [f"Trend {keyword} by month",
+                              f"What is {keyword} in the West region?"]
+    return art
+
+
+def _format_value(value: float, res: sl.Resolution) -> str:
+    fmt = sl.METRICS[res.metric]["variants"][res.variant].get("format", "number")
+    if fmt == "percent":
+        return f"{value * 100:,.1f}%"
+    if fmt == "currency":
+        return f"${value:,.0f}"
+    return f"{value:,.1f}"
+
+
+def _append_comparison(headline: str, comparison: dict, res: sl.Resolution) -> str:
+    if not comparison.get("available"):
+        return headline
+    prior = comparison["reference_value"]
+    fmt = sl.METRICS[res.metric]["variants"][res.variant].get("format", "number")
+    if fmt == "percent":
+        return (f"{headline} ({comparison['delta_pp']:+.1f} pp "
+                f"{comparison['basis_label']}, {comparison['reference_month']}: "
+                f"{_format_value(prior, res)})")
+    if prior:
+        return (f"{headline} ({comparison['delta_pct'] * 100:+.1f}% "
+                f"{comparison['basis_label']}, {comparison['reference_month']}: "
+                f"{_format_value(prior, res)})")
+    return headline
 
 
 def descriptive(intent: Intent, res: sl.Resolution) -> AnswerArtifact:
     df = sl.load_fact(res.source)
     col = sl.column_for(res.metric, res.variant)
     fdf = sl.apply_filters(df, intent.filters)
+    if fdf.empty:
+        return _no_data_refusal(intent, res)
     label = sl.METRICS[res.metric]["variants"][res.variant]["label"]
     scope = sl.scope_string(intent.filters)
     src_months = sorted(df["month"].unique())
     metric_series = sl.monthly_metric(fdf, res.metric, res.variant)
+    if metric_series.empty or metric_series.notna().sum() == 0:
+        return _no_data_refusal(intent, res, "The registered ratio denominator is zero.")
     monthly_values = metric_series.to_dict()
     caveats: list[str] = []
 
@@ -97,7 +144,8 @@ def descriptive(intent: Intent, res: sl.Resolution) -> AnswerArtifact:
         if intent.compare_basis:
             comparisons = [
                 _comparison_payload(intent.compare_basis, month, value,
-                                    src_months, monthly_values)
+                                    src_months, monthly_values,
+                                    ratio=sl.metric_kind(res.metric) == "ratio")
                 for month, value in out[["month", label]].itertuples(index=False, name=None)
             ]
             reference_label = f"{label} · {BASIS_LABELS[intent.compare_basis]}"
@@ -121,30 +169,32 @@ def descriptive(intent: Intent, res: sl.Resolution) -> AnswerArtifact:
                 )
         code = (f"df = load('{res.source}')\n"
                 f"df = filter(df, {intent.filters})\n"
-                + f"trend = df.groupby('month')['{col}'].sum()"
+                + f"trend = monthly_metric(df, '{res.metric}', '{res.variant}')"
                 + (f"\nreference = align_prior(trend, basis="
                    f"'{intent.compare_basis}')" if intent.compare_basis else "")
                 + (f"\ntrend = trend[trend.index.isin({wmonths})]"
                    if wmonths else ""))
         art = AnswerArtifact(intent.question, intent.question_class, TIER_VERIFIED, "descriptive",
                              headline=f"{label} ({scope}), {wlabel + ', ' if wlabel else ''}"
-                                      f"latest month {latest['month']}: {latest[label]:,.1f}",
+                                      f"latest month {latest['month']}: "
+                                      f"{_format_value(float(latest[label]), res)}",
                              value=float(latest[label]), chart_df=out, table=out, code=code)
         if comparison is not None:
             art.extras["comparison"] = comparison
     elif w:
         val = sl.aggregate_metric(fdf[fdf["month"].isin(wmonths)], res.metric, res.variant)
-        headline = f"{label} ({scope}), {wlabel}: {val:,.1f}"
+        if pd.isna(val):
+            return _no_data_refusal(intent, res, "The registered ratio denominator is zero.")
+        headline = f"{label} ({scope}), {wlabel}: {_format_value(val, res)}"
         comparison = None
         if intent.compare_basis:
             if len(wmonths) == 1:
                 comparison = _comparison_payload(intent.compare_basis, wmonths[0], val,
-                                                 src_months, monthly_values)
+                                                 src_months, monthly_values,
+                                                 ratio=sl.metric_kind(res.metric) == "ratio")
                 prior = comparison["reference_value"]
-                if comparison["available"] and prior:
-                    headline += (f" ({comparison['delta_pct'] * 100:+.1f}% "
-                                 f"{BASIS_LABELS[intent.compare_basis]}, "
-                                 f"{comparison['reference_month']}: {prior:,.1f})")
+                if comparison["available"] and (prior or sl.metric_kind(res.metric) == "ratio"):
+                    headline = _append_comparison(headline, comparison, res)
                 elif comparison["available"]:
                     caveats.append("The requested comparison value is zero, so a percentage "
                                    "change cannot be computed.")
@@ -157,11 +207,12 @@ def descriptive(intent: Intent, res: sl.Resolution) -> AnswerArtifact:
                                "comparison is omitted.")
         code = (f"df = load('{res.source}')\n"
                 f"df = filter(df, {intent.filters})\n"
-                f"value = df[df.month.isin({wmonths})]['{col}'].sum()")
+                f"value = aggregate_metric(df[df.month.isin({wmonths})], "
+                f"'{res.metric}', '{res.variant}')")
         if comparison is not None:
             code += (
-                f"\nreference = df[df.month == "
-                f"'{comparison['reference_month']}']['{col}'].sum()\n"
+                f"\nreference = aggregate_metric(df[df.month == "
+                f"'{comparison['reference_month']}'], '{res.metric}', '{res.variant}')\n"
                 "delta = value - reference"
                 if comparison["available"]
                 else f"\n# {intent.compare_basis} reference is unavailable"
@@ -172,19 +223,22 @@ def descriptive(intent: Intent, res: sl.Resolution) -> AnswerArtifact:
             art.extras["comparison"] = comparison
     else:
         ms = sorted(fdf["month"].unique())
+        if not ms:
+            return _no_data_refusal(intent, res)
         latest_month = ms[-1]
         val = sl.aggregate_metric(fdf.loc[fdf["month"] == latest_month],
                                   res.metric, res.variant)
-        headline = f"{label} ({scope}), {latest_month}: {val:,.1f}"
+        if pd.isna(val):
+            return _no_data_refusal(intent, res, "The registered ratio denominator is zero.")
+        headline = f"{label} ({scope}), {latest_month}: {_format_value(val, res)}"
         comparison = None
         if intent.compare_basis:
             comparison = _comparison_payload(intent.compare_basis, latest_month, val,
-                                             src_months, monthly_values)
+                                             src_months, monthly_values,
+                                             ratio=sl.metric_kind(res.metric) == "ratio")
             prior = comparison["reference_value"]
-            if comparison["available"] and prior:
-                headline += (f" ({comparison['delta_pct'] * 100:+.1f}% "
-                             f"{BASIS_LABELS[intent.compare_basis]}, "
-                             f"{comparison['reference_month']}: {prior:,.1f})")
+            if comparison["available"] and (prior or sl.metric_kind(res.metric) == "ratio"):
+                headline = _append_comparison(headline, comparison, res)
             elif comparison["available"]:
                 caveats.append("The requested comparison value is zero, so a percentage "
                                "change cannot be computed.")
@@ -193,11 +247,12 @@ def descriptive(intent: Intent, res: sl.Resolution) -> AnswerArtifact:
                                "history, so the comparison is omitted.")
         code = (f"df = load('{res.source}')\n"
                 f"df = filter(df, {intent.filters})\n"
-                f"value = df[df.month == '{latest_month}']['{col}'].sum()")
+                f"value = aggregate_metric(df[df.month == '{latest_month}'], "
+                f"'{res.metric}', '{res.variant}')")
         if comparison is not None:
             code += (
-                f"\nreference = df[df.month == "
-                f"'{comparison['reference_month']}']['{col}'].sum()\n"
+                f"\nreference = aggregate_metric(df[df.month == "
+                f"'{comparison['reference_month']}'], '{res.metric}', '{res.variant}')\n"
                 "delta = value - reference"
                 if comparison["available"]
                 else f"\n# {intent.compare_basis} reference is unavailable"
@@ -212,28 +267,50 @@ def descriptive(intent: Intent, res: sl.Resolution) -> AnswerArtifact:
 
 
 def retrieval(intent: Intent, res: sl.Resolution) -> AnswerArtifact:
+    supported_account_metrics = {"trx": "trx_ttm", "nrx": "nrx_ttm", "nbrx": "nbrx_ttm"}
+    if intent.metric not in supported_account_metrics or (
+            intent.template == "whitespace" and intent.metric != "trx"):
+        detail = ("the whitespace definition is governed on trailing TRx"
+                  if intent.template == "whitespace" else
+                  "account ranking is registered only for TRx, NRx, and NBRx")
+        art = AnswerArtifact(
+            intent.question, intent.question_class, TIER_ABSTAINED, "abstention",
+            headline=f"Declined: {detail}; no different metric was substituted.",
+            resolution=res,
+        )
+        art.extras["reframes"] = ["Top 15 accounts by TRx",
+                                  "List whitespace HCPs with no activity"]
+        return art
+
     acc = sl.apply_filters(sl.load_accounts(), intent.filters)
+    if acc.empty:
+        return _no_data_refusal(intent, res)
 
     if intent.template == "whitespace":
-        out = acc[(acc["decile"] >= 8) & (acc["months_since_rx"] >= 3)] \
+        out = acc[(acc["decile"] >= 8) & (acc["months_since_rx"] >= 3)
+                  & (acc["months_since_activity"] >= 3) & (acc["calls_90d"] == 0)] \
             .sort_values("trx_ttm", ascending=False) \
             [["account_id", "name", "specialty", "territory", "district", "region",
-              "payer_channel", "trx_ttm", "revenue_ttm", "decile", "months_since_rx",
-              "months_since_activity", "calls_90d"]].reset_index(drop=True)
+              "payer_channel", "trx_ttm", "nrx_ttm", "nbrx_ttm", "decile",
+              "months_since_rx", "months_since_activity", "calls_90d",
+              "call_plan_90d"]].reset_index(drop=True)
         code = ("hcp = load('accounts')  # prescriber-grain source only\n"
                 f"acc = filter(acc, {intent.filters})\n"
-                "out = hcp[(hcp.decile >= 8) & (hcp.months_since_rx >= 3)]")
+                "out = hcp[(hcp.decile >= 8) & (hcp.months_since_rx >= 3) "
+                "& (hcp.months_since_activity >= 3) & (hcp.calls_90d == 0)]")
         headline = (f"{len(out)} whitespace HCP accounts: decile 8+ by trailing TRx "
-                    f"with no observed prescription in 3+ months")
+                    "with no prescription or field activity in 3+ months")
     else:
-        out = acc.sort_values("trx_ttm", ascending=False).head(15) \
+        ranking_column = supported_account_metrics[intent.metric]
+        out = acc.sort_values(ranking_column, ascending=False).head(15) \
             [["account_id", "name", "specialty", "territory", "region", "trx_ttm",
-              "revenue_ttm", "decile", "calls_90d"]] \
+              "nrx_ttm", "nbrx_ttm", "decile", "calls_90d", "call_plan_90d"]] \
             .reset_index(drop=True)
         code = ("hcp = load('accounts')\n"
                 f"acc = filter(acc, {intent.filters})\n"
-                "out = hcp.nlargest(15, 'trx_ttm')")
-        headline = f"Top {len(out)} HCP accounts by trailing-twelve-month TRx"
+                f"out = hcp.nlargest(15, '{ranking_column}')")
+        headline = (f"Top {len(out)} HCP accounts by trailing-twelve-month "
+                    f"{sl.METRICS[intent.metric]['label']}")
 
     art = AnswerArtifact(intent.question, intent.question_class, TIER_VERIFIED, "retrieval",
                          headline=headline, table=out, code=code)

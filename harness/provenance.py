@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass, field, is_dataclass, asdict
 from datetime import datetime, timezone
 
@@ -21,10 +22,12 @@ TIER_ABSTAINED = "Abstained"      # scoped refusal
 
 
 def _stable_hash(obj) -> str:
-    if isinstance(obj, pd.DataFrame):
-        payload = obj.round(6).to_csv(index=False)
-    else:
-        payload = json.dumps(obj, sort_keys=True, default=str)
+    """Return a content hash for a JSON-safe, deterministic representation."""
+
+    payload = json.dumps(
+        _jsonable(obj), sort_keys=True, separators=(",", ":"),
+        ensure_ascii=False, allow_nan=False,
+    )
     return hashlib.sha256(payload.encode()).hexdigest()[:12]
 
 
@@ -48,9 +51,33 @@ class AnswerArtifact:
 
     @property
     def result_hash(self) -> str:
-        if self.table is not None:
-            return _stable_hash(self.table)
-        return _stable_hash({"value": self.value, "headline": self.headline})
+        """Hash the complete deterministic result, not presentation/runtime state.
+
+        ``created_at`` and model-translation metadata are deliberately excluded:
+        rerunning the same governed computation must reproduce.  Conversely,
+        changing a chart series, definition/source resolution, caveat, causal
+        check, or data version must change the hash even when the headline's
+        rounded number happens to stay the same.
+        """
+
+        stable_extras = {
+            key: value for key, value in self.extras.items()
+            if key not in {"translation", "intent", "analyst_reviewed"}
+        }
+        return _stable_hash({
+            "question_class": self.question_class,
+            "tier": self.tier,
+            "engine": self.engine,
+            "headline": self.headline,
+            "value": self.value,
+            "table": self.table,
+            "chart": self.chart_df,
+            "resolution": self.resolution,
+            "caveats": self.caveats,
+            "divergence": self.divergence,
+            "extras": stable_extras,
+            "data_version": self.data_version,
+        })
 
     def stamp(self) -> dict:
         """The provenance stamp rendered under every answer."""
@@ -83,22 +110,29 @@ class AnswerArtifact:
             "created_at": self.created_at,
             "result_hash": self.result_hash,
         }
-        return json.dumps(payload, indent=2, default=str)
+        return json.dumps(
+            _jsonable(payload), indent=2, sort_keys=True,
+            ensure_ascii=False, allow_nan=False,
+        )
 
 
 def _jsonable(obj):
-    if obj is None or isinstance(obj, (str, int, float, bool)):
+    if obj is None or isinstance(obj, (str, int, bool)):
         return obj
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
     if isinstance(obj, pd.DataFrame):
-        return obj.to_dict(orient="records")
+        return _jsonable(obj.to_dict(orient="records"))
     if isinstance(obj, pd.Series):
-        return obj.to_dict()
+        return _jsonable(obj.to_dict())
     if is_dataclass(obj) and not isinstance(obj, type):
         return _jsonable(asdict(obj))
     if isinstance(obj, dict):
         return {str(k): _jsonable(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple, set)):
+    if isinstance(obj, set):
+        return [_jsonable(v) for v in sorted(obj, key=str)]
+    if isinstance(obj, (list, tuple)):
         return [_jsonable(v) for v in obj]
     if hasattr(obj, "item"):  # numpy scalars
-        return obj.item()
+        return _jsonable(obj.item())
     return str(obj)

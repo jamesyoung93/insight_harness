@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from . import tiles
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 SESSION_STORE_KEY = "saved_insights_store"
 _INHERIT = object()
 
@@ -62,6 +62,9 @@ class SavedInsight:
             self.spec.basis,
             self.spec.viz_kind,
             self.spec.default_personas,
+            self.spec.question_class,
+            self.spec.breakdown_dimension,
+            self.spec.retrieval_template,
             self.watched,
         )
 
@@ -97,6 +100,10 @@ class SavedInsight:
     def viz_kind(self) -> str:
         return self.spec.viz_kind
 
+    @property
+    def question_class(self) -> str:
+        return self.spec.question_class
+
     def to_record(self) -> dict:
         return {
             "schema_version": SCHEMA_VERSION,
@@ -115,6 +122,9 @@ class SavedInsight:
                 "basis": self.spec.basis,
                 "viz_kind": self.spec.viz_kind,
                 "default_personas": list(self.spec.default_personas),
+                "question_class": self.spec.question_class,
+                "breakdown_dimension": self.spec.breakdown_dimension,
+                "retrieval_template": self.spec.retrieval_template,
             },
         }
 
@@ -145,7 +155,10 @@ def create_saved_insight(metric: str, filters: Mapping | tiles.FilterItems | Non
                          *, label: str | None = None, source: str | None = None,
                          variant: str | None = None, window: str = "Latest",
                          basis: str = "MoM", viz_kind: str = "sparkline",
-                         default_personas: tuple[str, ...] = (), watched: bool = True,
+                          default_personas: tuple[str, ...] = (), watched: bool = True,
+                          question_class: str = "Descriptive",
+                          breakdown_dimension: str | None = None,
+                          retrieval_template: str | None = None,
                          catalog_tile_id: str | None = None,
                          added_at: str | None = None,
                          insight_id: str | None = None) -> SavedInsight:
@@ -160,6 +173,9 @@ def create_saved_insight(metric: str, filters: Mapping | tiles.FilterItems | Non
         basis=basis,
         viz_kind=viz_kind,
         default_personas=default_personas,
+        question_class=question_class,
+        breakdown_dimension=breakdown_dimension,
+        retrieval_template=retrieval_template,
     )
     return _make_saved(
         spec,
@@ -172,38 +188,37 @@ def create_saved_insight(metric: str, filters: Mapping | tiles.FilterItems | Non
     )
 
 
+def save_spec(spec: tiles.SavedQuestionSpec, *, label: str,
+              catalog_tile_id: str | None = None, watched: bool = True,
+              scope=None) -> SavedInsight:
+    """Snapshot one already-materialized spec and its active external scope."""
+
+    scoped = replace(spec, filters=tiles.freeze_filters(
+        tiles.effective_spec_filters(spec, scope)))
+    return _make_saved(scoped, label=label, watched=watched,
+                       catalog_tile_id=catalog_tile_id, added_at=None,
+                       insight_id=None, allow_stale=False)
+
+
 def save_catalog_tile(tile: tiles.TileDefinition | str, *, window: str | None = None,
-                      basis: str | None = None, region: str | None = tiles.ALL_REGIONS,
+                      basis: str | None = None, region=tiles.ALL_REGIONS, scope=None,
                       source=_INHERIT, variant=_INHERIT, viz_kind: str | None = None,
                       watched: bool = True, label: str | None = None) -> SavedInsight:
     """Create a saved insight from a catalog tile and its active controls."""
 
     definition = tiles.tile_definition(tile)
-    spec_kwargs = {}
-    if source is not _INHERIT:
-        spec_kwargs["source"] = source
-    if variant is not _INHERIT:
-        spec_kwargs["variant"] = variant
-    spec = tiles.question_spec(
+    materialized = tiles.materialize_spec(
         definition,
         window=window,
         basis=basis,
+        source=None if source is _INHERIT else source,
+        variant=None if variant is _INHERIT else variant,
         viz_kind=viz_kind,
-        **spec_kwargs,
     )
-    spec = replace(
-        spec,
-        filters=tiles.freeze_filters(tiles.effective_spec_filters(spec, region)),
-    )
-    return _make_saved(
-        spec,
-        label=label or definition.label,
-        watched=watched,
-        catalog_tile_id=definition.id,
-        added_at=None,
-        insight_id=None,
-        allow_stale=False,
-    )
+    selected_scope = region if scope is None else scope
+    return save_spec(materialized.spec, label=label or definition.label,
+                     catalog_tile_id=definition.id, watched=watched,
+                     scope=selected_scope)
 
 
 def _window_control(value) -> str:
@@ -232,15 +247,19 @@ def _basis_control(value) -> str:
 def migrate_legacy_watch(record: Mapping) -> SavedInsight:
     """Upgrade a metric+filters legacy watch without hiding stale records."""
 
+    raw = record.get("intent_spec") if isinstance(record.get("intent_spec"), Mapping) else record
     spec = tiles.SavedQuestionSpec(
-        metric=str(record.get("metric") or ""),
-        filters=tiles.freeze_filters(record.get("filters") or {}),
-        source=record.get("source"),
-        variant=record.get("variant"),
-        window=_window_control(record.get("window")),
-        basis=_basis_control(record.get("basis") or record.get("compare_basis")),
-        viz_kind=str(record.get("viz_kind") or record.get("viz") or "sparkline"),
-        default_personas=tuple(record.get("default_personas") or ()),
+        metric=str(raw.get("metric") or ""),
+        filters=tiles.freeze_filters(raw.get("filters") or {}),
+        source=raw.get("source"),
+        variant=raw.get("variant"),
+        window=_window_control(raw.get("window")),
+        basis=_basis_control(raw.get("basis") or raw.get("compare_basis")),
+        viz_kind=str(raw.get("viz_kind") or raw.get("viz") or "sparkline"),
+        default_personas=tuple(raw.get("default_personas") or ()),
+        question_class=str(raw.get("question_class") or "Descriptive"),
+        breakdown_dimension=raw.get("breakdown_dimension") or raw.get("dim_breakdown"),
+        retrieval_template=raw.get("retrieval_template") or raw.get("template"),
     )
     return _make_saved(
         spec,
@@ -259,7 +278,11 @@ def saved_insight_from_record(record: SavedInsight | Mapping) -> SavedInsight:
         if errors and not record.stale_reason:
             return replace(record, stale_reason="; ".join(errors))
         return record
-    if int(record.get("schema_version", 0) or 0) != SCHEMA_VERSION:
+    try:
+        version = int(record.get("schema_version", 0) or 0)
+    except (TypeError, ValueError):
+        version = 0
+    if version != SCHEMA_VERSION:
         return migrate_legacy_watch(record)
     raw = record.get("intent_spec") or {}
     spec = tiles.SavedQuestionSpec(
@@ -271,6 +294,9 @@ def saved_insight_from_record(record: SavedInsight | Mapping) -> SavedInsight:
         basis=_basis_control(raw.get("basis")),
         viz_kind=str(raw.get("viz_kind") or "sparkline"),
         default_personas=tuple(raw.get("default_personas") or ()),
+        question_class=str(raw.get("question_class") or "Descriptive"),
+        breakdown_dimension=raw.get("breakdown_dimension"),
+        retrieval_template=raw.get("retrieval_template"),
     )
     saved = _make_saved(
         spec,
@@ -281,9 +307,8 @@ def saved_insight_from_record(record: SavedInsight | Mapping) -> SavedInsight:
         insight_id=record.get("id"),
         allow_stale=True,
     )
-    recorded_reason = record.get("stale_reason")
-    if recorded_reason and not saved.stale_reason:
-        saved = replace(saved, stale_reason=str(recorded_reason))
+    # Recompute staleness against the current registry so a restored metric or
+    # dimension automatically revives instead of retaining obsolete metadata.
     return saved
 
 
