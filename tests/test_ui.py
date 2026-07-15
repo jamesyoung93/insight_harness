@@ -290,7 +290,7 @@ def test_unsupported_questions_render_exportable_scoped_refusals(question, quest
     assert artifact.tier == TIER_ABSTAINED
     assert artifact.question_class == question_class
     assert "Scoped refusal" in rendered_text(at)
-    assert any(item.label == "Download answer (JSON)" for item in at.get("download_button"))
+    assert any(item.label == "Answer JSON" for item in at.get("download_button"))
 
 
 def test_refusal_escapes_question_html_and_reframe_chip_runs_a_real_answer():
@@ -310,12 +310,12 @@ def test_refusal_escapes_question_html_and_reframe_chip_runs_a_real_answer():
 def test_answer_downloads_cover_json_and_retrieval_csv():
     at = ask(app().run(), "What is TRx in the West region?")
     labels = [item.label for item in at.get("download_button")]
-    assert "Download answer (JSON)" in labels
+    assert "Answer JSON" in labels
 
     at = ask(app().run(), "List whitespace HCPs with no activity")
     labels = [item.label for item in at.get("download_button")]
-    assert "Download answer (JSON)" in labels
-    assert "Download table (CSV)" in labels
+    assert "Answer JSON" in labels
+    assert "Table CSV" in labels
 
 
 def test_diagnostic_question_adds_a_waterfall_and_honors_breakdown_dimension():
@@ -495,28 +495,28 @@ def test_digest_history_store_is_owned_by_each_app_session():
 # ---------------------------------------------------------------------------
 # Secure optional-model policy and governance administration
 # ---------------------------------------------------------------------------
-def test_no_key_exposes_bounded_parser_and_a_model_allowlist(monkeypatch):
+def test_no_key_exposes_bounded_parser_and_hides_model_controls(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("INSIGHT_HARNESS_ALLOW_PUBLIC_LLM", raising=False)
     at = app().run()
     text = rendered_text(at)
 
-    assert "Language-model translation is off" in text
-    assert "No API credential is bundled" in text
-    assert tuple(at.selectbox(key="llm_model").options) == runtime_policy.allowed_models()
-    assert any("required for LLM translation" in item.label for item in at.text_input)
+    assert "Translator: built-in parser · ready" in text
+    assert "Add your own Anthropic API key" in text
+    assert not [item for item in at.selectbox if item.key == "llm_model"]
+    assert any(item.key == "api_key" for item in at.text_input)
 
 
 def test_session_key_enables_translation_without_exposing_the_secret(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     secret = "sk-ant-test-placeholder"
     at = app().run()
-    next(item for item in at.text_input
-         if "required for LLM translation" in item.label).set_value(secret).run()
+    at.text_input(key="api_key").set_value(secret).run()
     text = rendered_text(at)
 
-    assert "Language-model translation is enabled" in text
+    assert "Translator: language model · session credential" in text
     assert "credential entered for this app session" in text
+    assert tuple(at.selectbox(key="llm_model").options) == runtime_policy.allowed_models()
     assert secret not in text
 
 
@@ -526,15 +526,17 @@ def test_deployment_key_is_secure_by_default_and_requires_explicit_public_opt_in
     monkeypatch.delenv("INSIGHT_HARNESS_ALLOW_PUBLIC_LLM", raising=False)
     locked = app().run()
     locked_text = rendered_text(locked)
-    assert "Language-model translation is off" in locked_text
+    assert "Translator: built-in parser · ready" in locked_text
     assert "not enabled for anonymous sessions" in locked_text
+    assert not [item for item in locked.selectbox if item.key == "llm_model"]
     assert secret not in locked_text
 
     monkeypatch.setenv("INSIGHT_HARNESS_ALLOW_PUBLIC_LLM", "true")
     enabled = app().run()
     enabled_text = rendered_text(enabled)
-    assert "Language-model translation is enabled" in enabled_text
-    assert "configured by the deployment owner" in enabled_text
+    assert "Translator: language model · deployment credential" in enabled_text
+    assert "explicitly enabled by the deployment owner" in enabled_text
+    assert tuple(enabled.selectbox(key="llm_model").options) == runtime_policy.allowed_models()
     assert secret not in enabled_text
 
 
@@ -578,8 +580,8 @@ def test_feedback_vote_is_session_deduplicated_by_exact_result_hash():
     at = ask(app().run(), "What is TRx in the West region?")
     result_hash = answer_artifact(at).result_hash
 
-    correct = button_labeled(at, "Correct")
-    wrong = button_labeled(at, "Number is wrong")
+    correct = button_labeled(at, "👍")
+    wrong = button_labeled(at, "🚩")
     assert not correct.disabled
     assert not wrong.disabled
 
@@ -593,14 +595,14 @@ def test_feedback_vote_is_session_deduplicated_by_exact_result_hash():
     # The click writes the vote after this run's buttons were constructed;
     # the next ordinary rerun must render both choices disabled.
     at.run()
-    assert button_labeled(at, "Correct").disabled
-    assert button_labeled(at, "Number is wrong").disabled
+    assert button_labeled(at, "👍").disabled
+    assert button_labeled(at, "🚩").disabled
 
     # Ordinary reruns and navigation must not reopen voting for the same answer.
     at.radio(key="nav").set_value("Reliability").run()
     at.radio(key="nav").set_value("Home").run()
-    assert button_labeled(at, "Correct").disabled
-    assert button_labeled(at, "Number is wrong").disabled
+    assert button_labeled(at, "👍").disabled
+    assert button_labeled(at, "🚩").disabled
     assert len(services.feedback_history().loc[
         services.feedback_history()["result_hash"] == result_hash
     ]) == 1
@@ -612,7 +614,6 @@ def test_feedback_vote_is_session_deduplicated_by_exact_result_hash():
 def test_accuracy_check_passes_through_the_ui():
     at = app(timeout=180).run()
     at.radio(key="nav").set_value("Reliability").run()
-    button_labeled(at, "Run accuracy check").click().run()
 
     assert not at.exception
     values = {metric.label: metric.value for metric in at.metric}

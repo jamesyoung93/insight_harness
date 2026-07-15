@@ -11,6 +11,40 @@ from harness import semantic_layer as sl
 from views import common
 
 
+_SURFACED_ROW_STYLES = """
+<style>
+div[class*="st-key-monitoring_flag_"] {
+    border: 1px solid rgba(107, 114, 128, 0.22);
+    border-left-width: 5px !important;
+    border-radius: 0.5rem;
+    padding: 0.7rem 0.85rem;
+    margin-bottom: 0.45rem;
+}
+div[class*="st-key-monitoring_flag_up_"] {
+    border-left-color: #0E7C7B !important;
+}
+div[class*="st-key-monitoring_flag_down_"] {
+    border-left-color: #D05A5A !important;
+}
+div[class*="st-key-monitoring_flag_flat_"] {
+    border-left-color: #2A78D6 !important;
+}
+.monitoring-priority {
+    text-align: right;
+    line-height: 1.3;
+}
+.monitoring-priority strong {
+    display: block;
+    font-size: 1rem;
+}
+.monitoring-priority span {
+    color: #6B7280;
+    font-size: 0.82rem;
+}
+</style>
+"""
+
+
 def _display_value(art, value: float | None) -> str:
     return common.format_artifact_value(art, value)
 
@@ -84,9 +118,10 @@ def _watched_section() -> None:
 
 def render() -> None:
     st.title("Monitoring")
+    st.markdown(_SURFACED_ROW_STYLES, unsafe_allow_html=True)
     st.caption("Movements worth your attention, ranked by business impact rather than "
                "statistical significance.")
-    z = st.slider("Sensitivity (z-score threshold)", 1.5, 3.5, 2.0, 0.25)
+    z = st.slider("Sensitivity (z-score threshold)", 1.0, 3.5, 1.6, 0.1)
     st.caption("Sensitivity applies to system-surfaced movements; watched cards use "
                "their saved comparison basis.")
 
@@ -111,17 +146,28 @@ def render() -> None:
                "unitless 0–100 ranking that combines standardized and relative movement; "
                "native movement remains visible beside it.")
     for row in feed.itertuples():
-        c1, c2, c3, c4 = st.columns([2.4, 2.4, 1.4, 1.8])
-        c1.markdown(f"**{row.metric}** · {row.scope}")
-        variant = sl.default_variant(row.metric_id)
-        latest = common.format_metric_value(row.metric_id, variant, row.latest)
-        trailing = common.format_metric_value(row.metric_id, variant, row.trailing_mean)
-        c2.caption(f"{latest} latest vs {trailing} trailing · z={row.z}")
-        movement = common.format_native_delta(row.metric_id, variant, row.native_delta)
-        c3.caption(f"priority {row.impact_score * 100:.0f}/100 · {movement}")
-        c4.button("Break this down", key=f"mon_{row.Index}",
-                  on_click=common.queue_question,
-                  args=(services.breakdown_question(row.metric_id, {row.dim: row.value}),))
+        direction = row.direction if row.direction in {"up", "down", "flat"} else "flat"
+        with st.container(key=f"monitoring_flag_{direction}_{row.Index}"):
+            c1, c2, c3, c4 = st.columns([2.4, 2.4, 1.4, 1.8])
+            c1.markdown(f"**{row.metric}** · {row.scope}")
+            variant = sl.default_variant(row.metric_id)
+            latest = common.format_metric_value(row.metric_id, variant, row.latest)
+            trailing = common.format_metric_value(row.metric_id, variant, row.trailing_mean)
+            c2.caption(f"{latest} latest vs {trailing} trailing · z={row.z}")
+            movement = common.format_native_delta(row.metric_id, variant, row.native_delta)
+            priority = f"Priority {row.impact_score * 100:.0f}/100"
+            c3.markdown(
+                f'<div class="monitoring-priority" '
+                f'aria-label="{priority}; native movement {movement}">'
+                f"<strong>{priority}</strong><span>Native movement {movement}</span></div>",
+                unsafe_allow_html=True,
+            )
+            c4.button(
+                "Break this down", key=f"mon_{row.Index}",
+                help=f"Open a governed breakdown of {row.metric} for {row.scope}.",
+                on_click=common.queue_question,
+                args=(services.breakdown_question(row.metric_id, {row.dim: row.value}),),
+            )
     with st.expander("All flagged movements, as a table"):
         display = feed.assign(
             latest_display=[

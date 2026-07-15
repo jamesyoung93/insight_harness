@@ -9,9 +9,12 @@ import pandas as pd
 import streamlit as st
 
 from harness import pipeline, services
+from harness import semantic_layer as sl
 
 _SERIES = ["pass", "reproducible", "correct refusals", "corrections"]
 _SERIES_COLORS = ["#2a78d6", "#B07C0E", "#6B7280", "#e34948"]  # validated set
+_REPORT_CACHE_KEY = "_reliability_reports_by_data_version"
+_RERUN_REQUEST_KEY = "_reliability_rerun_requested"
 
 
 def _trend_chart(hist: pd.DataFrame) -> None:
@@ -32,53 +35,101 @@ def _trend_chart(hist: pd.DataFrame) -> None:
         ).properties(height=220), width="stretch")
 
 
+def _rates(result: pd.DataFrame) -> dict[str, float]:
+    refusals = result[result["tier"] == "Abstained"]
+    feedback = services.feedback_history()
+    votes = feedback[feedback["verdict"].isin(["correct", "wrong"])] \
+        if len(feedback) else feedback
+    return {
+        "pass_rate": float(result["pass"].mean()),
+        "reproducible_rate": float(result["reproducible"].mean()),
+        "correct_refusal_rate": (float(refusals["pass"].mean())
+                                 if len(refusals) else 1.0),
+        "correction_rate": (float((votes["verdict"] == "wrong").mean())
+                            if len(votes) else 0.0),
+    }
+
+
+def _run_and_cache(data_version: str) -> dict:
+    result = pipeline.run_golden()
+    history = pipeline.eval_history()
+    matching = history[history["data_version"] == data_version] if len(history) else history
+    recorded_ts = matching.iloc[-1]["ts"] if len(matching) else None
+    report = {"result": result, "recorded_ts": recorded_ts, "rates": _rates(result)}
+    reports = dict(st.session_state.get(_REPORT_CACHE_KEY, {}))
+    reports[data_version] = report
+    st.session_state[_REPORT_CACHE_KEY] = reports
+    # Keep the original keys during the transition for saved browser sessions
+    # and external test harnesses that inspect the current report directly.
+    st.session_state["golden"] = result
+    st.session_state["golden_ts"] = recorded_ts
+    return report
+
+
+def _previous_run(history: pd.DataFrame, recorded_ts: str | None):
+    if recorded_ts is None or len(history) == 0:
+        return None
+    matches = history.index[history["ts"] == recorded_ts].tolist()
+    return history.iloc[matches[-1] - 1] if matches and matches[-1] >= 1 else None
+
+
+def _scoreboard(report: dict, history: pd.DataFrame) -> None:
+    rates = report["rates"]
+    previous = _previous_run(history, report.get("recorded_ts"))
+
+    def delta(key: str) -> str | None:
+        return (f"{(rates[key] - previous[key]) * 100:+.0f}pp"
+                if previous is not None else None)
+
+    st.subheader("Current reliability scorecard")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Pass rate", f"{rates['pass_rate'] * 100:.0f}%",
+              delta=delta("pass_rate"))
+    c2.metric("Reproducible", f"{rates['reproducible_rate'] * 100:.0f}%",
+              delta=delta("reproducible_rate"))
+    c3.metric("Correct refusals", f"{rates['correct_refusal_rate'] * 100:.0f}%",
+              delta=delta("correct_refusal_rate"))
+    c4.metric("Correction rate", f"{rates['correction_rate'] * 100:.1f}%",
+              delta=delta("correction_rate"), delta_color="inverse",
+              help="Share of correctness feedback that flagged an answer as wrong.")
+
+
+def _request_rerun() -> None:
+    st.session_state[_RERUN_REQUEST_KEY] = True
+
+
 def render() -> None:
     st.title("Reliability")
     st.caption("The system's track record, so you can decide how much to trust it: a "
-               "standing question set with independently computed expected answers, run "
-               "on demand. Declining correctly is scored, and every question runs twice "
-               "and must produce identical result hashes.")
+               "standing question set with independently computed expected answers, "
+               "checked automatically once per data version and available to rerun here. "
+               "Declining correctly is scored, and every question runs twice and must "
+               "produce identical result hashes.")
 
-    if st.button("Run accuracy check", type="primary"):
+    data_version = sl.data_version()
+    reports = st.session_state.get(_REPORT_CACHE_KEY, {})
+    report = reports.get(data_version)
+    rerun_requested = bool(st.session_state.pop(_RERUN_REQUEST_KEY, False))
+    if report is None or rerun_requested:
         try:
             with st.spinner("Running every question twice…"):
-                st.session_state["golden"] = pipeline.run_golden()
-            recorded = pipeline.eval_history()
-            st.session_state["golden_ts"] = recorded.iloc[-1]["ts"] if len(recorded) else None
+                report = _run_and_cache(data_version)
         except Exception:
             logging.getLogger(__name__).exception("accuracy check failed")
-            st.error("The accuracy check couldn't finish. Check the data feed, then "
-                     "run it again.")
+            qualifier = "automatic " if not rerun_requested else ""
+            st.error(f"The {qualifier}accuracy check couldn't finish. Check the data feed, "
+                     "then run it again.")
 
     hist = pipeline.eval_history()
-    if "golden" in st.session_state:
-        res = st.session_state["golden"]
-        # anchor the delta on the run this session actually recorded, so a
-        # newer run from another session can't shift the comparison
-        matches = hist.index[hist["ts"] == st.session_state.get("golden_ts")].tolist()
-        prev = hist.iloc[matches[0] - 1] if matches and matches[0] >= 1 else None
-        refusals = res[res["tier"] == "Abstained"]
+    if report is not None:
+        _scoreboard(report, hist)
+        st.caption(f"Automatically checked on first visit for data version `{data_version}`; "
+                   "the report is cached for this session.")
 
-        def delta(cur, col):
-            return f"{(cur - prev[col])*100:+.0f}pp" if prev is not None else None
+    st.button("Run accuracy check again", type="secondary", on_click=_request_rerun)
 
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Pass rate", f"{res['pass'].mean()*100:.0f}%",
-                  delta=delta(res["pass"].mean(), "pass_rate"))
-        c2.metric("Reproducible", f"{res['reproducible'].mean()*100:.0f}%",
-                  delta=delta(res["reproducible"].mean(), "reproducible_rate"))
-        c3.metric("Correct refusals", f"{refusals['pass'].mean()*100:.0f}%",
-                  delta=delta(refusals["pass"].mean(), "correct_refusal_rate"))
-        st.dataframe(res, width="stretch", hide_index=True)
-    elif len(hist):
-        last = hist.iloc[-1]
-        st.caption(f"Last recorded run ({last['ts']}): pass {last['pass_rate']*100:.0f}% · "
-                   f"reproducible {last['reproducible_rate']*100:.0f}% · correct refusals "
-                   f"{last['correct_refusal_rate']*100:.0f}%. Run the accuracy check to "
-                   "refresh the record.")
-    else:
-        st.info("Run the accuracy check to see the current pass, reproducibility, and "
-                "correct-refusal rates.")
+    if report is not None:
+        st.dataframe(report["result"], width="stretch", hide_index=True)
 
     if len(hist) >= 2:
         st.markdown("**Trend across recorded runs**")
@@ -92,16 +143,13 @@ def render() -> None:
     fb = services.feedback_history()
     votes = fb[fb["verdict"].isin(["correct", "wrong"])] if len(fb) else fb
     if len(votes):
-        st.metric("Correction rate", f"{(votes['verdict']=='wrong').mean()*100:.1f}%",
-                  help="Share of feedback that flagged an answer as wrong. Its trend "
-                       "across runs is charted above.")
         st.caption(f"{len(votes)} correctness vote(s) recorded. Raw question text is never "
                    "shown on this public page.")
         safe_columns = [column for column in (
             "ts", "question_hash", "class", "tier", "engine", "result_hash",
             "data_version", "verdict",
-        ) if column in fb.columns]
-        st.dataframe(fb[safe_columns].tail(20), width="stretch", hide_index=True)
+        ) if column in votes.columns]
+        st.dataframe(votes[safe_columns].tail(20), width="stretch", hide_index=True)
     else:
         st.info("No feedback yet. Use 👍 / 🚩 on any answer to build the record.")
 
