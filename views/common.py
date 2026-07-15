@@ -4,6 +4,7 @@ presentation. Every page renders answers through render_answer()."""
 from __future__ import annotations
 
 import html
+import re
 
 import altair as alt
 import pandas as pd
@@ -182,6 +183,129 @@ def chip(tier: str) -> str:
     return f'<span class="tier-chip" style="background:{TIER_COLORS.get(tier, "#333")}">{label}</span>'
 
 
+def _artifact_window_label(art) -> str:
+    """Return the effective window displayed by this exact artifact."""
+
+    intent = art.extras.get("intent")
+    # A diagnostic's answer is the actual comparison interval, which may
+    # begin before the requested aggregation window because it needs a
+    # reference period.
+    if art.engine == "decomposition" and art.extras.get("m0") and art.extras.get("m1"):
+        return f'{art.extras["m0"]}–{art.extras["m1"]}'
+
+    # Registered causal designs own their pre/post window and treated scope;
+    # the user's wording is not a substitute for either effective contract.
+    if art.engine == "causal_advisor":
+        estimate = art.extras.get("estimate", {})
+        months = list(estimate.get("pre", [])) + list(estimate.get("post", []))
+        if months:
+            return f"{months[0]}–{months[-1]}"
+
+    effective = [str(month) for month in art.extras.get("effective_window", [])]
+    if effective:
+        span = effective[0] if len(effective) == 1 else f"{effective[0]}–{effective[-1]}"
+        requested = [str(month) for month in art.extras.get("requested_window", [])]
+        return f"{span} effective" if requested and effective != requested else span
+
+    if art.chart_df is not None and "month" in art.chart_df.columns:
+        months = [str(month) for month in art.chart_df["month"].dropna().tolist()]
+        if months:
+            return months[0] if len(months) == 1 else f"{months[0]}–{months[-1]}"
+
+    window = getattr(intent, "window", None)
+    if window is not None:
+        partial = re.search(
+            r"\(partial: (20\d{2}-\d{2})–(20\d{2}-\d{2}) available here\)",
+            art.headline,
+        )
+        if partial:
+            return f"{partial.group(1)}–{partial.group(2)} (partial {window.label})"
+        return str(window.label)
+
+    # Older deterministic engines disclose their effective month in the
+    # headline rather than a structured field.  Reading the first date keeps
+    # the display faithful without changing the artifact or its result hash.
+    if match := re.search(r"\b20\d{2}-\d{2}\b", art.headline):
+        return match.group(0)
+    if art.engine == "retrieval":
+        return "current account snapshot"
+    return "latest available"
+
+
+def hero_figure_content(art) -> tuple[str, str, str]:
+    """Build the value, quiet metadata, and body for an answer hero.
+
+    This pure adapter is deliberately separate from ``render_hero_figure`` so
+    tiles and other stamped-answer surfaces can reuse the visual component
+    without creating a second computation path.
+    """
+
+    intent = art.extras.get("intent")
+    resolution = art.resolution
+    if resolution is None:
+        metric = f"{art.question_class} request"
+        scope = "governed scope check"
+    else:
+        metric_spec = sl.METRICS[resolution.metric]
+        metric = metric_spec["variants"].get(resolution.variant, {}).get(
+            "label", metric_spec["label"])
+        effective_scope = art.extras.get("effective_scope")
+        scope = sl.scope_string(
+            effective_scope if effective_scope is not None
+            else (getattr(intent, "filters", {}) if intent else {})
+        )
+    label = " · ".join((metric, scope, _artifact_window_label(art)))
+
+    if art.tier == TIER_ABSTAINED:
+        value = "No governed result"
+        body = ""
+    elif art.engine == "causal_advisor":
+        effect = art.extras.get("estimate", {}).get("did_pct", art.value)
+        value = "—" if effect is None else f"{float(effect) * 100:+.1f}%"
+        body = art.headline
+    elif art.engine == "retrieval":
+        value = f"{len(art.table):,} records" if art.table is not None else "Result set"
+        body = art.headline
+    elif art.engine == "decomposition" and resolution is not None:
+        value = format_native_delta(resolution.metric, resolution.variant, art.value)
+        body = art.headline
+    else:
+        value = format_artifact_value(art, art.value)
+        body = art.headline
+    return value, label, body
+
+
+def render_hero_figure(value: str, label: str, body: str, tier: str,
+                       question_class: str) -> None:
+    """Render the reusable answer/tile hero with escaped presentation text."""
+
+    safe_value = html.escape(str(value))
+    safe_label = html.escape(str(label))
+    safe_body = html.escape(str(body))
+    safe_class = html.escape(str(question_class))
+    safe_heading = html.escape(f"{label}: {value}", quote=True)
+    body_html = (
+        f'<div class="answer-hero-body" style="font-size:1rem;line-height:1.5;'
+        f'color:#3F3F46;max-width:78ch;margin-top:8px;">{safe_body}</div>'
+        if safe_body else ""
+    )
+    st.markdown(
+        f'<section class="answer-hero" aria-label="{safe_heading}" '
+        'style="padding:2px 0 10px;">'
+        '<div class="answer-hero-label" style="display:flex;align-items:center;'
+        'gap:8px;flex-wrap:wrap;margin-bottom:8px;">'
+        f'<span style="color:#6B7280;font-size:.78rem;letter-spacing:.02em;">'
+        f'{safe_label}</span><span style="flex:1 1 16px;"></span>{chip(tier)}'
+        f'<span class="question-chip" style="border:1px solid #D1D5DB;border-radius:12px;'
+        f'padding:2px 10px;color:#52525B;font-size:.76rem;font-weight:600;">'
+        f'{safe_class}</span></div>'
+        f'<h3 class="answer-hero-value" style="font-size:44px;line-height:1.05;'
+        f'font-weight:600;letter-spacing:-.025em;color:#18181B;margin:0;">'
+        f'{safe_value}</h3>{body_html}</section>',
+        unsafe_allow_html=True,
+    )
+
+
 def render_stamp(art) -> None:
     s = art.stamp()
     tr = art.extras.get("translation", {})
@@ -257,7 +381,7 @@ def waterfall(t: pd.DataFrame, m0: str, m1: str) -> alt.Chart:
     base = alt.Chart(df).encode(
         x=alt.X("label:N", sort=None, title=None, axis=alt.Axis(labelAngle=0)))
     bars = base.transform_filter(alt.datum.kind != "total").mark_bar(
-        size=38, cornerRadius=2).encode(
+        size=24, cornerRadius=2).encode(
         y=alt.Y("y0:Q", title=None, scale=yscale), y2="y1:Q",
         color=alt.Color("kind:N", legend=None,
                         scale=alt.Scale(domain=["up", "down"], range=[C_UP, C_DOWN])),
@@ -385,7 +509,7 @@ def _divergence_block(art) -> None:
     material = [d for d in art.divergence if d["material"]]
     if not material:
         return
-    with st.expander(f"⚠ Same question, different answer — {len(material)} material fork(s)"):
+    with st.expander(f"⑂ Same question, different answer — {len(material)} material fork(s)"):
         st.caption("The answer above uses the governed default. These registered alternates "
                    "move it materially; escalate unresolved forks to metric governance.")
         for d in art.divergence:
@@ -421,22 +545,41 @@ def _provenance_block(art) -> None:
 
 def _actions_row(art, key: str) -> None:
     slug = art.question_class.lower().replace(" ", "_")
-    c1, c2, c3, c4, c5, c6 = st.columns([1.5, 1.5, 0.9, 1.3, 0.9, 2.2])
-    c1.download_button("Download answer (JSON)", data=art.to_json(),
-                       file_name=f"answer_{slug}_{art.result_hash}.json",
-                       mime="application/json", key=f"{key}_json")
-    if art.table is not None:
-        c2.download_button("Download table (CSV)",
-                           data=art.table.to_csv(index=False),
-                           file_name=f"answer_{slug}_{art.result_hash}.csv",
-                           mime="text/csv", key=f"{key}_csv")
+    # Keep the receipt controls usable in the narrow main pane created by an
+    # open sidebar.  A trailing spacer made every real control collapse and
+    # wrap vertically; export gets the dominant share instead.
+    c1, c2, c3, c4 = st.columns(
+        [3.5, 1.0, 1.0, 1.0], gap=None, vertical_alignment="center")
+    with c1:
+        # ``key`` was added to st.popover after our supported Streamlit 1.50
+        # floor.  The surrounding answer controls already carry hash-derived
+        # keys, and one popover is rendered per card, so no explicit key is
+        # needed here.
+        # Streamlit supplies the disclosure chevron, so the visible control is
+        # still “Download ▾” without duplicating the glyph for screen readers.
+        with st.popover("Download", help="Export this exact stamped answer."):
+            st.download_button(
+                "Answer JSON", data=art.to_json(),
+                file_name=f"answer_{slug}_{art.result_hash}.json",
+                mime="application/json", key=f"{key}_json", width="stretch",
+                help="Download the complete answer, provenance, and result hash.",
+            )
+            if art.table is not None:
+                st.download_button(
+                    "Table CSV", data=art.table.to_csv(index=False),
+                    file_name=f"answer_{slug}_{art.result_hash}.csv",
+                    mime="text/csv", key=f"{key}_csv", width="stretch",
+                    help="Download the rows shown with this answer.",
+                )
     votes = st.session_state.setdefault("_feedback_votes", {})
     already_voted = art.result_hash in votes
-    if c3.button("👍 Correct", key=f"{key}_up", disabled=already_voted):
+    if c2.button("👍", key=f"{key}_up", disabled=already_voted,
+                 help="Mark this answer correct"):
         services.log_feedback(art, "correct")
         votes[art.result_hash] = "correct"
         st.toast("Logged.")
-    if c4.button("🚩 Number is wrong", key=f"{key}_down", disabled=already_voted):
+    if c3.button("🚩", key=f"{key}_down", disabled=already_voted,
+                 help="Flag this number as wrong"):
         services.log_feedback(art, "wrong")
         votes[art.result_hash] = "wrong"
         st.toast("Logged — flagged answers are reviewed.")
@@ -447,7 +590,7 @@ def _actions_row(art, key: str) -> None:
     watchable = art.resolution is not None and art.extras.get("intent") is not None \
         and art.engine in ("descriptive", "decomposition", "retrieval")
     if watchable:
-        if c5.button("👁 Watch", key=f"{key}_watch",
+        if c4.button("👁", key=f"{key}_watch",
                      help="Pin this metric and scope to the Watched list in Monitoring."):
             try:
                 result = _save_watch(art)
@@ -455,8 +598,6 @@ def _actions_row(art, key: str) -> None:
                          else "Already on the watchlist.")
             except ValueError as exc:
                 st.toast(str(exc))
-    with c6:
-        st.code(art.result_hash, language=None)  # copyable result hash
 
 
 def _refusal(art, key: str) -> None:
@@ -478,29 +619,28 @@ def _refusal(art, key: str) -> None:
 # --------------------------------------------------------------------------- #
 def render_answer(art, key: str = "ans") -> None:
     key = f"{key}_{art.result_hash}"
-    st.markdown(chip(art.tier) + f"&nbsp; **{art.question_class}** question",
-                unsafe_allow_html=True)
+    with st.container(border=True):
+        value, label, body = hero_figure_content(art)
+        render_hero_figure(value, label, body, art.tier, art.question_class)
 
-    if art.tier == TIER_ABSTAINED:
-        _refusal(art, key)
+        if art.tier == TIER_ABSTAINED:
+            _refusal(art, key)
+            _actions_row(art, key)
+            return
+
+        if art.engine == "causal_advisor":
+            _causal_brief(art, key)
+        elif art.engine == "decomposition":
+            _decomposition_body(art, key)
+        else:
+            if art.chart_df is not None:
+                line_chart(art.chart_df)
+            if art.table is not None and art.engine != "descriptive":
+                st.dataframe(art.table, width="stretch",
+                             height=min(320, 45 + 35 * len(art.table)))
+
+        _divergence_block(art)
+        _caveats_block(art)
+        _provenance_block(art)
+        render_stamp(art)
         _actions_row(art, key)
-        return
-
-    st.subheader(art.headline)
-
-    if art.engine == "causal_advisor":
-        _causal_brief(art, key)
-    elif art.engine == "decomposition":
-        _decomposition_body(art, key)
-    else:
-        if art.chart_df is not None:
-            line_chart(art.chart_df)
-        if art.table is not None and art.engine != "descriptive":
-            st.dataframe(art.table, width="stretch",
-                         height=min(320, 45 + 35 * len(art.table)))
-
-    _divergence_block(art)
-    _caveats_block(art)
-    _provenance_block(art)
-    render_stamp(art)
-    _actions_row(art, key)

@@ -34,7 +34,7 @@ def _text(at):
 
 def test_watch_is_session_local_evaluated_and_removable():
     first = _ask(_app().run(), "What is TRx in the West region?")
-    _exact_button(first, "👁 Watch").click().run()
+    _exact_button(first, "👁").click().run()
     store = first.session_state[saved_insights.SESSION_STORE_KEY]
     assert len(store) == 1
     saved = store.all()[0]
@@ -97,7 +97,7 @@ def test_answer_watch_preserves_diagnostic_and_retrieval_identity():
     )
     for question, question_class, breakdown, template in cases:
         at = _ask(_app().run(), question)
-        _exact_button(at, "👁 Watch").click().run()
+        _exact_button(at, "👁").click().run()
         saved = at.session_state[saved_insights.SESSION_STORE_KEY].all()[0]
         assert saved.question_class == question_class
         assert saved.spec.breakdown_dimension == breakdown
@@ -110,7 +110,7 @@ def test_answer_watch_preserves_diagnostic_and_retrieval_identity():
 def test_causal_design_is_not_watchable_without_event_identity_in_saved_spec():
     at = _ask(_app().run(), "What was the impact of the speaker program in the East?")
     assert not at.exception
-    assert all(button.label != "👁 Watch" for button in at.button)
+    assert all(button.label != "👁" for button in at.button)
 
 
 def test_hierarchy_scope_control_uses_registry_values():

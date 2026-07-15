@@ -44,12 +44,12 @@ bounded rule parser and digest cards use deterministic templates.
 
 | Surface | Capability |
 |---|---|
-| **Home** | Persona defaults; live KPI, diagnostic, and retrieval tiles; R3M/R6M/R12M and MoM/QoQ/YoY controls; one scope selector spanning region, district, territory, specialty, and payer channel; governed source/variant overrides; material-fork disclosure; Watch, Open, Break down, and JSON download actions; natural-language exploration below the tiles |
+| **Home** | Persona defaults; live KPI, diagnostic, and retrieval tiles; R3M/R6M/R12M and MoM/QoQ/YoY controls; one scope selector spanning region, district, territory, specialty, and payer channel; governed source/variant overrides; material-fork disclosure; Watch, Open, Break down, and artifact download actions; natural-language exploration below the tiles. Answers render as bordered, provenance-stamped cards with a reusable hero figure and compact action row |
 | **Digest** | Three deterministic signals ranked from movements, session watches, material source/definition forks, and registered-event overlap; scope precedence, novelty, and one item per metric family; artifact downloads and resolution-preserving drill-through; optional validated model phrasing |
-| **Monitoring** | Session-owned watched insights plus an impact-ranked anomaly feed, with breakdown drill-through that retains the saved comparison and resolution context |
+| **Monitoring** | Session-owned watched insights plus an impact-ranked anomaly feed, with a 1.6 default sensitivity, direction-colored rows, right-aligned priority, and breakdown drill-through that retains the saved comparison and resolution context |
 | **Causal Studio** | Difference-in-differences proposals for three registered synthetic events, including treated/control scopes, computed pre-trend and sensitivity checks, and caveats; analyst sign-off requires administrator-token authentication and adds a provenance stamp without promoting the Hypothesis tier |
 | **Semantic Layer** | Public read-only metric and source registries; server-token-gated administration of the materiality threshold and default variants; atomic configuration writes with embedded audit history and a synced local JSONL mirror |
-| **Reliability** | A pharma-only independent golden set covering values, ratios, retrieval, decomposition, causal effects, divergence, refusals, and source/data contracts; every case runs twice for hash reproducibility, while the broader test suite enforces watches and tile parity |
+| **Reliability** | A pharma-only independent golden set covering values, ratios, retrieval, decomposition, causal effects, divergence, refusals, and source/data contracts; the set auto-runs once per data version and leads with pass, reproducibility, correct-refusal, and correction-rate scores; every case runs twice for hash reproducibility |
 | **How answers are produced** | In-product explanation of tiers, provenance, and the authority boundary between translation and computation |
 
 ### Persona presets
@@ -131,10 +131,22 @@ calculation. Tile rendering, Ask, Monitoring drill-through, and digest
 drill-through all enter the same answer pipeline. Cache identity includes the
 materialized spec, effective scope, governance configuration, and data version.
 
+## Architecture
+
+| Layer | Responsibility |
+|---|---|
+| **App shell** | `app.py` owns navigation, minimal Streamlit chrome, the compact translator status, and the collapsed optional-model connector. The full zero-key workbench remains available through the built-in parser |
+| **Presentation** | `views/common.py` renders the reusable answer hero, bordered artifact card, divergence and caveat disclosures, provenance stamp with result hash, and compact feedback/download actions; no view computes a governed number |
+| **Governance** | `harness/semantic_layer.py` resolves registered metrics, dimensions, sources, variants, events, and materiality before execution |
+| **Execution** | `harness/pipeline.py` routes validated intents into deterministic engines; identical intent, configuration, and data version produce the same artifact hash |
+| **Trust record** | `views/reliability.py` runs and session-caches the independent golden set by data version; tests cover engines, contracts, reproducibility, security policy, and headless UI flows |
+
 ## Optional language-model features
 
-Users may enter their own Anthropic API key in the sidebar for the current
-session. A deployment-owned `ANTHROPIC_API_KEY` is disabled for anonymous use
+Users may enter their own Anthropic API key in the collapsed **Connect a
+language model…** sidebar panel for the current session. Model selection stays
+hidden until an authorized key is present. A deployment-owned
+`ANTHROPIC_API_KEY` is disabled for anonymous use
 unless the operator also sets:
 
 ```text
