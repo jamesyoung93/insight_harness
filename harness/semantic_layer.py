@@ -50,6 +50,25 @@ SOURCES = {
                   "Latest month unavailable (1-month reporting lag).",
                   "Early history restated by the vendor."],
     },
+    "referral": {
+        "name": "Referral relationship feed",
+        "kind": "observed-incomplete",
+        "cadence": "monthly",
+        "lag_months": 0,
+        "account_grain": True,
+        "grain": ["account_id", "month"],
+        "completeness": {
+            "entity": "account_id",
+            "eligible_source": "accounts",
+            "target": 0.80,
+            "projected": False,
+        },
+        "notes": [
+            "Observed-only receiving-HCP referral feed; it is not projected to full coverage.",
+            "A zero is observed only for covered HCP-months; uncovered HCPs are unknown, not zero.",
+            "Active referrers are de-duplicated within receiving HCP-month before aggregation.",
+        ],
+    },
 }
 
 # --------------------------------------------------------------------------- #
@@ -99,10 +118,28 @@ METRICS = {
         "label": "TRx market share", "family": "share", "kind": "ratio", "additive": False,
         "sources": ["source_a", "source_b"], "default_source": "source_a",
         "default_variant": "brand_market",
-        "variants": {"brand_market": {"numerator": "trx_units", "denominator": "market_trx",
-                                        "label": "TRx market share", "format": "percent",
-                                        "owner": "Brand Analytics",
-                                        "notes": "Brand TRx divided by total market TRx; descriptive only."}},
+        "basket_registry": "market_baskets_v1",
+        "variants": {
+            # Backward-compatible governed broad-market definition. New
+            # basket-aware surfaces resolve to one of the named variants below.
+            "brand_market": {"numerator": "trx_units", "denominator": "market_trx",
+                             "label": "TRx market share", "format": "percent",
+                             "owner": "Brand Analytics", "basket": "advanced_therapy",
+                             "comparison_group": "share",
+                             "notes": "Brand TRx divided by the broad advanced-therapy market; descriptive only."},
+            "il17_class": {"numerator": "trx_units", "denominator": "il17_class_trx",
+                           "label": "TRx share · IL-17 class", "format": "percent",
+                           "owner": "Brand Analytics", "basket": "il17_class",
+                           "comparison_group": "share",
+                           "notes": "Brand TRx divided by governed IL-17 class TRx."},
+            "advanced_therapy": {
+                "numerator": "trx_units", "denominator": "advanced_therapy_trx",
+                "label": "TRx share · advanced therapy", "format": "percent",
+                "owner": "Brand Analytics", "basket": "advanced_therapy",
+                "comparison_group": "share",
+                "notes": "Brand TRx divided by the governed broader advanced-therapy basket.",
+            },
+        },
     },
     "calls": {
         "label": "Details",
@@ -150,9 +187,36 @@ METRICS = {
     "new_writers": {
         "label": "New writers", "family": "writers", "kind": "additive", "additive": True,
         "sources": ["source_a"], "default_source": "source_a", "default_variant": "strict",
+        "coverage_notes": [
+            "The first measured month is a non-comparable warm-up and remains undefined; new-writer status requires a prior observed month."
+        ],
         "variants": {"strict": {"column": "new_writers", "label": "New writers",
                                  "format": "number", "owner": "Brand Analytics",
                                  "notes": "First observed brand prescription in the measured history."}},
+    },
+    "referrals_in": {
+        "label": "Incoming referrals", "family": "referrals",
+        "digest_family": "patient_flow", "kind": "additive", "additive": True,
+        "monitoring_eligible": True,
+        "sources": ["referral"], "default_source": "referral",
+        "default_variant": "observed",
+        "variants": {
+            "observed": {"column": "referrals_in", "label": "Observed incoming referrals",
+                         "format": "number", "owner": "Market Access Analytics",
+                         "notes": "Observed incoming referral count; not projected for uncovered HCPs."},
+        },
+    },
+    "active_referrers": {
+        "label": "Active referrers", "family": "referrals",
+        "digest_family": "patient_flow", "kind": "additive", "additive": True,
+        "monitoring_eligible": True,
+        "sources": ["referral"], "default_source": "referral",
+        "default_variant": "observed",
+        "variants": {
+            "observed": {"column": "active_referrers", "label": "Observed active referrers",
+                         "format": "number", "owner": "Market Access Analytics",
+                         "notes": "Distinct active referrers within covered receiving-HCP/month cells; observed only."},
+        },
     },
 }
 
@@ -346,6 +410,9 @@ METRIC_KEYWORDS = {
     "samples": "samples", "sample units": "samples",
     "speaker attendance": "speaker_attendance", "speaker programs": "speaker_attendance",
     "new writers": "new_writers", "writers": "new_writers",
+    "active referrers": "active_referrers", "referring hcps": "active_referrers",
+    "incoming referrals": "referrals_in", "referrals in": "referrals_in",
+    "referrals": "referrals_in",
 }
 
 # --------------------------------------------------------------------------- #
@@ -458,6 +525,35 @@ def apply_filters(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
     return df
 
 
+def source_completeness(source: str, filters: dict | None = None) -> dict | None:
+    """Compute scoped entity coverage for an incomplete registered source.
+
+    The numerator is observed entities, not non-zero rows: a covered HCP with
+    an observed zero remains covered.  The denominator comes from the governed
+    eligible account universe under the exact same scope.
+    """
+    contract = SOURCES[source].get("completeness")
+    if not contract:
+        return None
+    scope = filters or {}
+    eligible = apply_filters(load_accounts(), scope)
+    observed = apply_filters(load_fact(source), scope)
+    entity = contract["entity"]
+    expected_count = int(eligible[entity].nunique()) if entity in eligible else 0
+    observed_count = int(observed[entity].nunique()) if entity in observed else 0
+    coverage = observed_count / expected_count if expected_count else float("nan")
+    return {
+        "source": source,
+        "entity": entity,
+        "observed": observed_count,
+        "expected": expected_count,
+        "coverage": coverage,
+        "target": float(contract["target"]),
+        "projected": bool(contract.get("projected", False)),
+        "filters": dict(scope),
+    }
+
+
 def scope_string(filters: dict) -> str:
     parts = [f"{k} in [{', '.join(v)}]" if isinstance(v, (list, tuple)) else f"{k}={v}"
              for k, v in filters.items()]
@@ -481,16 +577,21 @@ def aggregate_metric(df: pd.DataFrame, metric: str, variant: str) -> float:
     """
     spec = METRICS[metric]["variants"][variant]
     if metric_kind(metric) == "ratio":
-        denominator = float(df[spec["denominator"]].sum())
-        return float(df[spec["numerator"]].sum()) / denominator \
+        numerator_values = df[spec["numerator"]]
+        denominator_values = df[spec["denominator"]]
+        if not numerator_values.notna().any() or not denominator_values.notna().any():
+            return float("nan")
+        denominator = float(denominator_values.sum(min_count=1))
+        return float(numerator_values.sum(min_count=1)) / denominator \
             if denominator else float("nan")
-    return float(df[spec["column"]].sum())
+    values = df[spec["column"]]
+    return float(values.sum(min_count=1)) if values.notna().any() else float("nan")
 
 
 def monthly_metric(df: pd.DataFrame, metric: str, variant: str) -> pd.Series:
     spec = METRICS[metric]["variants"][variant]
     if metric_kind(metric) == "ratio":
-        numerator = df.groupby("month")[spec["numerator"]].sum()
-        denominator = df.groupby("month")[spec["denominator"]].sum()
+        numerator = df.groupby("month")[spec["numerator"]].sum(min_count=1)
+        denominator = df.groupby("month")[spec["denominator"]].sum(min_count=1)
         return numerator.div(denominator.where(denominator != 0)).sort_index()
-    return df.groupby("month")[spec["column"]].sum().sort_index()
+    return df.groupby("month")[spec["column"]].sum(min_count=1).sort_index()

@@ -68,12 +68,13 @@ older identifiers.
 
 The generator owns the committed data contract. It uses a local NumPy generator
 with seed `42`, writes explicit UTF-8/LF files, derives the HCP table from source
-A, and records exact event/source truth in `ground_truth.json`.
+A, emits a deterministic observed-only referral feed, and records exact
+event/source truth in `ground_truth.json`.
 
 ```bash
 python data/generate_demo_data.py
 git diff --exit-code -- data/accounts.csv data/fact_source_a.csv \
-  data/fact_source_b.csv data/ground_truth.json
+  data/fact_source_b.csv data/fact_referral.csv data/ground_truth.json
 ```
 
 Expected shape after regeneration:
@@ -82,10 +83,13 @@ Expected shape after regeneration:
 |---|---|---:|
 | `data/fact_source_a.csv` | `account_id`, `month` | 5,760 |
 | `data/fact_source_b.csv` | month + territory/district/region/specialty/payer channel | 1,104 |
+| `data/fact_referral.csv` | receiving `account_id`, `month` | 4,608 |
 | `data/accounts.csv` | `account_id` | 240 |
 
 The source-A calendar covers July 2024 through June 2026. Source B intentionally
-ends in May 2026 because its registered reporting lag is one month.
+ends in May 2026 because its registered reporting lag is one month. The referral
+feed covers exactly 80% of eligible HCPs; it is observed-only, so uncovered HCPs
+remain unknown rather than becoming zero or projected activity.
 
 If generator output changes intentionally, update the registry, ground truth,
 independent golden expectations, and documentation together. Never update golden
@@ -99,7 +103,7 @@ Run the same checks as CI:
 python -m pip check
 python data/generate_demo_data.py
 git diff --exit-code -- data/accounts.csv data/fact_source_a.csv \
-  data/fact_source_b.csv data/ground_truth.json
+  data/fact_source_b.csv data/fact_referral.csv data/ground_truth.json
 python -m compileall -q app.py harness views tests
 python -m pytest -q
 ```
@@ -107,20 +111,37 @@ python -m pytest -q
 Before a demo or release, also exercise these flows in a clean Streamlit
 session:
 
-1. Home renders the selected persona without a model credential.
+1. Home renders the selected persona and governed top-three strip without a
+   model credential; small visible changes remain legible on tile sparklines
+   and the same expanded-answer chart because both use the shared explicit
+   visible-data y-domain.
 2. Scope, window, comparison, source, and sales-type controls do not crash tiles
    that lack a requested source or variant; the fallback is disclosed.
-3. A tile can be watched, opened, broken down, and downloaded.
+3. A tile can be watched, opened, broken down, expanded, and downloaded. Tile
+   reorder works by drag when the pinned component loads and by Move up/down as
+   the keyboard fallback.
 4. Monitoring preserves the saved source, variant, basis, and scope on
    drill-through.
-5. Digest renders three or fewer diverse governed signals, downloads as one
-   artifact, and preserves resolution on breakdown.
+5. Digest renders three or fewer diverse governed signals with category labels,
+   endpoint-marked sparklines, and full-size dialogs; it downloads as one
+   artifact and preserves resolution on breakdown.
 6. Causal Studio shows registered treated/control scopes and remains
    Hypothesis-tier. Analyst review is locked until the administrator token is
    authenticated on Semantic Layer; sign-off records provenance for the exact
    result but does not promote its tier.
 7. Reliability completes the independent set and reports reproducibility.
-8. Semantic Layer stays read-only without an admin token; a test deployment can
+8. A share tile discloses its adaptive basket, an explicit IL-17 or advanced-
+   therapy choice is stamped as an override, and its governed members reconcile
+   to the denominator.
+9. Market Access referral tiles disclose computed scope completeness; uncovered
+   HCPs remain unknown, not zero.
+10. The exact question “Compare the activity mix of top 20 HCPs by NRx share
+    with matched peers” returns a Directional artifact with selection floors,
+    matching recipe, referral coverage, stable evidence, and a Causal Studio
+    handoff.
+11. An expanded geographic tile drills national → region → district → territory
+    and exposes a ranked synthetic-NPI table at territory scope.
+12. Semantic Layer stays read-only without an admin token; a test deployment can
    apply and log an intentional authorized governance change.
 
 GitHub Actions performs dependency, regeneration, compilation, and test checks
@@ -172,6 +193,9 @@ and monitoring.
    deployment-owned key is intentional.
 6. Configure `INSIGHT_HARNESS_GOVERNANCE_ADMIN_TOKEN` only if the public process
    must support shared governance writes or authenticated causal sign-off.
+7. After the `main` deployment refreshes, repeat the release smoke flows above
+   against the hosted URL. A successful local check or merge alone is not proof
+   that the hosted process has pulled the new commit.
 
 Managed-hosting local files are not a durable system of record. The “Daily
 digest” remains a deterministic view over the current monthly snapshot; schedule
@@ -194,6 +218,15 @@ The correct behavior is a no-data abstention, not zero or source-A substitution.
 **A share breakdown is refused.** TRx share is a ratio. Descriptive aggregation
 is governed; contribution decomposition is intentionally unavailable until a
 mix-effects method is registered.
+
+**A share answer changes when I select a different basket.** This is expected:
+IL-17 class and advanced therapy have different governed denominators. The
+selected/default basket, registry fingerprint, reconciliation, and any override
+are part of the artifact evidence.
+
+**A referral tile is lower than an external total.** The bundled referral feed
+is observed-only at 80% HCP coverage and is not projected. Use the computed
+scope completeness disclosure; uncovered HCPs are unknown, not zero.
 
 **A digest does not rotate each day.** Static monthly data does not justify fake
 date-seeded rotation. It changes with data, governance, persona/scope, watches,

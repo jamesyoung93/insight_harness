@@ -204,14 +204,16 @@ def test_watch_execution_context_survives_into_item_and_breakdown(monkeypatch):
     context = payload["drillthrough_context"]
     assert context == {"source": "source_b", "variant": "normalized",
                        "window": "R6M", "basis": "yoy"}
-    assert payload["ranking_method"] == {
-        "id": digest.MOVEMENT_RANKING_METHOD,
-        "description": "Latest observed month compared with the mean of the preceding six months.",
-        "latest_periods": 1,
-        "baseline_periods": 6,
-        "uses_drillthrough_window": False,
-        "uses_drillthrough_basis": False,
-    }
+    method = payload["ranking_method"]
+    assert method["id"] == digest.MOVEMENT_RANKING_METHOD
+    assert method["latest_periods"] == 1
+    assert method["baseline_periods"] == 6
+    assert method["uses_drillthrough_window"] is False
+    assert method["uses_drillthrough_basis"] is False
+    assert method["weights"] == {
+        "standardized": 0.45, "relative": 0.20, "business_scale": 0.35}
+    assert "national monthly volume" in method["business_scale_definition"]
+    assert "suppressed" in method["low_base_guard"]
     assert "last 6 months" in item.breakdown_question
     assert "same month last year" in item.breakdown_question
 
@@ -356,8 +358,21 @@ def test_router_digest_view_uses_session_history_drills_through_and_downloads():
     labels = [button.label for button in at.get("download_button")]
     assert labels.count("Download artifact") == 3
     assert "Download complete digest" in labels
+    assert not at.code
+    captions = " ".join(str(item.value) for item in at.caption)
+    assert "Evidence stamp · fact hash:" in captions
     next(button for button in at.button if button.label == "Break this down").click().run()
     assert at.session_state["nav"] == "Home"
     assert at.session_state["ask_src"] in sl.SOURCES
     assert at.session_state["ask_var"] != "governed default"
     assert at.session_state["ask_q"]
+
+
+def test_share_divergence_headline_formats_ratio_values_as_percentages():
+    candidate = next(
+        candidate for candidate in digest.scan_candidates(persona="Executive").candidates
+        if candidate.kind == "divergence" and candidate.metric == "trx_share"
+    )
+    headline, _ = digest._headline(candidate)
+    assert headline.count("%") >= 3  # relative gap + governed + alternate shares
+    assert "governed 0.1 vs" not in headline

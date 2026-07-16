@@ -44,9 +44,10 @@ bounded rule parser and digest cards use deterministic templates.
 
 | Surface | Capability |
 |---|---|
-| **Home** | Persona defaults; live KPI, diagnostic, and retrieval tiles; R3M/R6M/R12M and MoM/QoQ/YoY controls; one scope selector spanning region, district, territory, specialty, and payer channel; governed source/variant overrides; material-fork disclosure; Watch, Open, Break down, and artifact download actions; natural-language exploration below the tiles. Answers render as bordered, provenance-stamped cards with a reusable hero figure and compact action row |
-| **Digest** | Three deterministic signals ranked from movements, session watches, material source/definition forks, and registered-event overlap; scope precedence, novelty, and one item per metric family; artifact downloads and resolution-preserving drill-through; optional validated model phrasing |
-| **Monitoring** | Session-owned watched insights plus an impact-ranked anomaly feed, with a 1.6 default sensitivity, direction-colored rows, right-aligned priority, and breakdown drill-through that retains the saved comparison and resolution context |
+| **Home** | Persona defaults; a compact, governed top-three signal strip; live KPI, diagnostic, retrieval, referral, and matched-cohort tiles; compact window/comparison/data controls; adaptive basket disclosure; material-fork disclosure; Watch, Open, Break down, Expand, and artifact download actions; natural-language exploration below the tiles. Tile sparklines and expanded answer charts share an explicit padded y-domain derived from every finite visible series, so small movements remain legible without forcing zero onto the scale |
+| **Digest** | Three deterministic, scope-diverse signals with executive-language headlines, category labels, 12-point endpoint-marked sparklines, evidence stamps, and the disclosed priority calculation in “Why this surfaced”; artifact downloads, full-size dialogs, resolution-preserving drill-through, and optional validated model phrasing |
+| **Monitoring** | Session-owned watched insights plus an anomaly feed ranked with priority score v2 (standardized movement, relative movement, and business scale); low-base guards suppress inflated percentage/scale terms, while overlapping scopes and the registered details/attainment relationship are clustered into one story |
+| **Deep exploration** | Large governed dialogs for tiles, charts, and digest stories; modal-local window, comparison, and split controls; national → region → district → territory breadcrumbs; territory-level ranked synthetic HCP records with NPI and a disclosed minimum-volume floor; drag reorder through a pinned component with Move up/down controls retained as the fallback |
 | **Causal Studio** | Difference-in-differences proposals for three registered synthetic events, including treated/control scopes, computed pre-trend and sensitivity checks, and caveats; analyst sign-off requires administrator-token authentication and adds a provenance stamp without promoting the Hypothesis tier |
 | **Semantic Layer** | Public read-only metric and source registries; server-token-gated administration of the materiality threshold and default variants; atomic configuration writes with embedded audit history and a synced local JSONL mirror |
 | **Reliability** | A pharma-only independent golden set covering values, ratios, retrieval, decomposition, causal effects, divergence, refusals, and source/data contracts; the set auto-runs once per data version and leads with pass, reproducibility, correct-refusal, and correction-rate scores; every case runs twice for hash reproducibility |
@@ -58,6 +59,11 @@ The five presets are Sales Rep, District Manager, Brand Marketing, Market
 Access, and Executive. Sales Rep starts at territory scope, District Manager at
 district scope, and the other presets at national scope. Each preset supplies a
 tile set, scope, window, comparison basis, and digest scope.
+
+District Manager and Market Access presets surface observed referral tiles;
+Brand Marketing and Executive presets surface the governed top-NRx-share versus
+matched-peer cohort tile. These remain saved-question specifications evaluated
+through the same pipeline as Ask.
 
 Tile add/remove/reorder choices, saved defaults, watches, and public digest
 history are owned by the current Streamlit session. They are intentionally not
@@ -71,16 +77,20 @@ The registry exposes these monthly metrics:
 
 - TRx with units, gross-dollar, and payer-normalized variants
 - NRx and NBRx
-- TRx market share, calculated as brand TRx divided by market TRx
+- TRx market share under governed `il17_class` and `advanced_therapy` baskets,
+  with immutable membership, reconciliation, adoption-stage adaptive defaults,
+  and disclosed user overrides
 - details delivered, call plan, and call-plan attainment
 - samples dropped, speaker attendance, and new writers
+- observed incoming referrals and active referrers, with computed scope
+  completeness and no projection of uncovered HCPs
 
 The registered dimensions are `territory`, `district`, `region`, `specialty`,
-and `payer_channel`. The HCP universe also carries derived decile, trailing Rx,
-recency, and 90-day activity fields for governed retrieval such as whitespace
-HCPs.
+and `payer_channel`. The HCP universe also carries a stable synthetic 10-digit
+NPI plus derived decile, adoption stage, trailing Rx/share, recency, and 90-day
+activity fields for governed retrieval and cohort selection.
 
-The two source products deliberately disagree in controlled ways:
+The three source products have distinct, registered contracts:
 
 - `source_a` — **Direct/DDD + specialty pharmacy feed**, at one
   `account_id` × `month` row, covering prescriptions and field activity with no
@@ -89,6 +99,10 @@ The two source products deliberately disagree in controlled ways:
   registered dimensions, with a one-month lag, registered regional projection
   factors, and an early-history restatement. It does not claim HCP or
   field-activity grain.
+- `referral` — **Referral relationship feed**, at receiving-HCP × month grain
+  for a deterministic 80% of eligible HCPs. It is observed-only: a covered zero
+  is zero, while an uncovered HCP remains unknown rather than being imputed or
+  projected.
 
 Source comparisons use the common available window. Missing panel coverage is
 reported as a coverage gap rather than misclassified as a value fork. Ratio
@@ -120,11 +134,28 @@ question or saved spec
   -> provenance-stamped AnswerArtifact          harness/provenance.py
 ```
 
-Question classes are Retrieval, Descriptive, Diagnostic, Causal, Predictive,
-and Out of scope. Predictive requests are refused because the registry contains
-no governed forecasting model. Causal requests execute only when they match a
-registered event and preserve its treated population; otherwise the system
-returns a scoped reframe.
+Question classes are Retrieval, Descriptive, Diagnostic, Cohort comparison,
+Causal, Predictive, and Out of scope. Predictive requests are refused because
+the registry contains no governed forecasting model. Causal requests execute
+only when they match a registered event and preserve its treated population;
+otherwise the system returns a scoped reframe.
+
+The built-in parser recognizes the exact Round-2 demonstration question:
+
+> Compare the activity mix of top 20 HCPs by NRx share with matched peers
+
+The deterministic recipe applies disclosed NRx and market-NRx floors, selects
+the top 20 by trailing NRx share, and matches without replacement on exact
+region, specialty, and governed decile band before minimizing market-NRx
+opportunity distance. It compares R3M details, samples, speaker attendance,
+call-plan attainment, and observed referral rates. The artifact remains
+**Directional**, prints the matching recipe and coverage caveat, and offers a
+Causal Studio handoff rather than implying that the activity gaps caused share.
+
+Basket-specific Ask routes are also explicit, for example “What is TRx share in
+the IL-17 class?” Share tiles resolve their adoption-stage adaptive default and
+disclose the selected basket; an explicit tile or Ask choice is stamped as an
+override.
 
 A tile is an immutable saved-question specification, not a separate dashboard
 calculation. Tile rendering, Ask, Monitoring drill-through, and digest
@@ -136,9 +167,9 @@ materialized spec, effective scope, governance configuration, and data version.
 | Layer | Responsibility |
 |---|---|
 | **App shell** | `app.py` owns navigation, minimal Streamlit chrome, the compact translator status, and the collapsed optional-model connector. The full zero-key workbench remains available through the built-in parser |
-| **Presentation** | `views/common.py` renders the reusable answer hero, bordered artifact card, divergence and caveat disclosures, provenance stamp with result hash, and compact feedback/download actions; no view computes a governed number |
+| **Presentation** | `views/common.py` renders the reusable answer hero, shared explicit visible-data chart domain, bordered artifact card, full-size answer dialog, divergence and caveat disclosures, provenance stamp with result hash, and compact feedback/download actions; no view computes a governed number |
 | **Governance** | `harness/semantic_layer.py` resolves registered metrics, dimensions, sources, variants, events, and materiality before execution |
-| **Execution** | `harness/pipeline.py` routes validated intents into deterministic engines; identical intent, configuration, and data version produce the same artifact hash |
+| **Execution** | `harness/pipeline.py` routes validated intents into deterministic descriptive, retrieval, decomposition, basket-share, cohort, and causal engines; identical intent, configuration, and data version produce the same artifact hash |
 | **Trust record** | `views/reliability.py` runs and session-caches the independent golden set by data version; tests cover engines, contracts, reproducibility, security policy, and headless UI flows |
 
 ## Optional language-model features
@@ -175,16 +206,18 @@ retention purpose before enabling it.
 
 - 240 synthetic HCPs across 24 months (`2024-07` through `2026-06`);
 - 5,760 account-month rows in source A;
-- 1,104 aggregated, one-month-lagged panel rows in source B; and
+- 1,104 aggregated, one-month-lagged panel rows in source B;
+- 4,608 observed referral rows covering exactly 80% of eligible HCPs; and
 - an HCP table derived and reconciled from source A.
 
-Generated CSV files use explicit UTF-8/LF output. CI regenerates all four data
-artifacts and fails if they differ from the committed benchmark:
+Generated CSV files use explicit UTF-8/LF output. The committed benchmark now
+contains five generated artifacts; include every one in the release drift
+check:
 
 ```bash
 python data/generate_demo_data.py
 git diff --exit-code -- data/accounts.csv data/fact_source_a.csv \
-  data/fact_source_b.csv data/ground_truth.json
+  data/fact_source_b.csv data/fact_referral.csv data/ground_truth.json
 ```
 
 The in-app label “Daily digest” describes the intended workflow, not fake daily
@@ -196,13 +229,25 @@ changes. A true morning digest requires a real refreshed feed.
 
 The test suite includes deterministic engine tests, data-contract and golden-set
 checks, tile/spec/cache parity, saved-insight migrations, session isolation,
-digest ranking and narrator attacks, provenance hashing, runtime policy, and
-headless Streamlit page flows.
+digest ranking and narrator attacks, priority/low-base/clustering contracts,
+basket reconciliation, incomplete-referral semantics, cohort matching and hash
+determinism, shared chart-scale behavior, dialogs/drill, provenance hashing,
+runtime policy, and headless Streamlit page flows.
 
 GitHub Actions runs on pull requests and pushes to `main` with read-only
 repository permissions. It resolves the declared dependency ranges against the
 tested direct-version pins in `constraints.txt`, checks the dependency graph,
 regenerates the benchmark, compiles the app, and runs the full test suite.
+
+`streamlit-sortables==0.3.1` is pinned in both runtime requirements and CI
+constraints. Before publishing a Round-2 build, run the regeneration drift
+check, compile step, and complete test suite shown above; then smoke-test the
+exact cohort question, a basket override, referral completeness, tile and answer
+dialogs, geo drill to the synthetic-NPI table, drag reorder, and the button
+fallback in a clean local session. Deployment still follows the `main`-branch
+Streamlit procedure in [docs/OPERATIONS.md](docs/OPERATIONS.md), followed by the
+same hosted smoke checks; this README does not imply that a local commit has
+already reached the hosted app.
 
 For operational configuration, state-file behavior, deployment, and the release
 checklist, see [docs/OPERATIONS.md](docs/OPERATIONS.md).
@@ -213,6 +258,7 @@ checklist, see [docs/OPERATIONS.md](docs/OPERATIONS.md).
 app.py                          Streamlit router and runtime-policy controls
 views/
   home.py                       persona tile band and exploration workspace
+  tile_detail.py                governed tile dialog and geographic drill UI
   digest.py                     deterministic top-three digest
   monitoring.py                 session watches and anomaly feed
   causal_studio.py              registered causal design proposals
@@ -221,10 +267,12 @@ views/
   common.py                     artifact rendering and drill-through helpers
 harness/
   semantic_layer.py             metrics, dimensions, sources, events, governance
+  baskets.py / referrals.py     basket registry and observed-source contracts
+  drill.py                      deterministic geo hierarchy and HCP endpoint
   tiles.py / tile_runtime.py     saved-question specs, identity, and execution
   saved_insights.py             schema-migrated session watch/tile store
   triage.py / llm_translator.py rule and optional model translation
-  engines/                      descriptive, retrieval, decomposition, causal
+  engines/                      descriptive, retrieval, decomposition, cohort, causal
   services.py                   divergence, monitoring, feedback, caveats
   digest.py / digest_store.py   ranking, artifacts, and history stores
   digest_narrator.py            optional bounded/validated phrasing
@@ -236,6 +284,7 @@ data/
   ground_truth.json             independent event/source/data contract
   fact_source_a.csv             account-month system-of-record facts
   fact_source_b.csv             aggregated projected panel
+  fact_referral.csv             observed-only receiving-HCP referral facts
   accounts.csv                  derived HCP universe
 tests/                          unit, contract, golden, and AppTest coverage
 ```

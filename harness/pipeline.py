@@ -17,9 +17,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import semantic_layer as sl
+from . import baskets, semantic_layer as sl
 from . import services, tiles, triage
-from .engines import basic, causal_advisor, decomposition
+from .engines import basic, causal_advisor, cohort, decomposition
 from .provenance import AnswerArtifact, TIER_ABSTAINED, _stable_hash
 
 EVAL_HISTORY = Path(__file__).parent.parent / "data" / "eval_history.jsonl"
@@ -72,6 +72,26 @@ def answer_intent(intent: triage.Intent, source: str | None = None,
         art.extras["reframes"] = _reframes(intent)
         return art
 
+    if intent.question_class == triage.DESCRIPTIVE \
+            and intent.metric == "trx_share" and intent.basket_id:
+        art = baskets.answer_basket_share(
+            filters=intent.filters,
+            months=intent.window.months if intent.window else None,
+            basket_override=intent.basket_id,
+            source=source or "source_a",
+            question=intent.question,
+        )
+        if variant and variant != art.resolution.variant:
+            art.caveats.append(
+                f"Requested variant {variant!r} was not used because the question "
+                f"explicitly selected governed basket {intent.basket_id!r}.")
+        if art.tier != TIER_ABSTAINED:
+            services.build_caveats(art, intent.filters)
+        art.data_version = sl.data_version()
+        art.extras["intent"] = intent
+        art.extras["translation"] = translation
+        return art
+
     if intent.question_class == triage.RETRIEVAL \
             and (intent.metric or "trx") in {"trx", "nrx", "nbrx"}:
         # Account templates are materialized from the reconciled source-A
@@ -83,8 +103,10 @@ def answer_intent(intent: triage.Intent, source: str | None = None,
             requested.append(f"source={source}")
         if variant and variant != "units":
             requested.append(f"variant={variant}")
+        recipe_label = ("governed Top writers "
+                        if intent.template == "top_writers" else "")
         res.reason = (
-            "account-grain retrieval contract: source_a / units used"
+            f"{recipe_label}account-grain retrieval contract: source_a / units used"
             + (f"; requested override ({', '.join(requested)}) is not available "
                "for account retrieval" if requested else "")
         )
@@ -92,7 +114,9 @@ def answer_intent(intent: triage.Intent, source: str | None = None,
     else:
         res = sl.resolve(intent.metric or "trx", source, variant)
 
-    if intent.question_class == triage.CAUSAL:
+    if intent.question_class == triage.COHORT:
+        art = cohort.compare_top_hcps(intent.filters, question=intent.question)
+    elif intent.question_class == triage.CAUSAL:
         art = causal_advisor.propose(intent, res)
     elif intent.question_class == triage.DIAGNOSTIC:
         art = decomposition.decompose(intent, res)
@@ -103,7 +127,7 @@ def answer_intent(intent: triage.Intent, source: str | None = None,
 
     if art.tier != TIER_ABSTAINED:  # an engine may refuse (e.g. uncovered window)
         services.check_divergence(art, intent)
-        services.build_caveats(art)
+        services.build_caveats(art, intent.filters)
     art.data_version = sl.data_version()
     art.extras["intent"] = intent
     art.extras["translation"] = translation
@@ -133,8 +157,14 @@ _VALUE_COLUMNS = {
     "samples": {"units": "samples"},
     "speaker_attendance": {"attendees": "speaker_attendance"},
     "new_writers": {"strict": "new_writers"},
+    "referrals_in": {"observed": "referrals_in"},
+    "active_referrers": {"observed": "active_referrers"},
 }
-_RATIO_COLUMNS = {"trx_share": {"brand_market": ("trx_units", "market_trx")},
+_RATIO_COLUMNS = {"trx_share": {
+                      "brand_market": ("trx_units", "market_trx"),
+                      "il17_class": ("trx_units", "il17_class_trx"),
+                      "advanced_therapy": ("trx_units", "advanced_therapy_trx"),
+                  },
                   "call_attainment": {"actual_plan": ("calls", "call_plan")}}
 
 
@@ -296,6 +326,13 @@ GOLDEN = [
      "check": lambda art: art.resolution.source == "source_a"
      and art.resolution.variant == "units" and "account-grain retrieval" in art.resolution.reason,
      "label": "account retrieval overrides clamp to truthful account-grain provenance"},
+    {"id": "G32",
+     "question": "Compare the activity mix of top 20 HCPs by NRx share with matched peers",
+     "type": "check",
+     "check": lambda art: art.tier == "Directional" and art.engine == "cohort"
+     and art.extras.get("recipe", {}).get("version") == cohort.COHORT_RECIPE_VERSION
+     and art.extras.get("matched_count", 0) > 0,
+     "label": "money question routes to the governed deterministic cohort engine"},
 ]
 
 

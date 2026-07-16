@@ -1,14 +1,37 @@
 """Deterministic engines: descriptive aggregation/trend and retrieval templates."""
 from __future__ import annotations
 
+from dataclasses import asdict, dataclass
+
 import pandas as pd
 
 from .. import semantic_layer as sl
 from .. import services
-from ..provenance import AnswerArtifact, TIER_ABSTAINED, TIER_VERIFIED
+from ..provenance import AnswerArtifact, TIER_ABSTAINED, TIER_VERIFIED, _stable_hash
 from ..triage import BASIS_LABELS, Intent
+from . import cohort
 
 _BASIS_STEPS = {"prior_month": 1, "prior_quarter": 3, "yoy": 12}
+
+
+@dataclass(frozen=True)
+class TopWritersRecipe:
+    """Immutable recipe for the governed Top writers retrieval surface."""
+
+    version: str = "top_writers_nrx_share_v1"
+    top_n: int = 15
+    min_nrx_ttm: float = cohort.DEFAULT_RECIPE.min_nrx_ttm
+    min_market_nrx_ttm: float = cohort.DEFAULT_RECIPE.min_market_nrx_ttm
+    selection_metric: str = "nrx_share_ttm"
+    numerator: str = "nrx_ttm"
+    denominator: str = "market_nrx_ttm"
+    tie_breakers: tuple[str, ...] = (
+        "nrx_share_ttm DESC", "nrx_ttm DESC", "account_id ASC",
+    )
+    interpretation: str = "descriptive ranking only; not causal"
+
+
+DEFAULT_TOP_WRITERS_RECIPE = TopWritersRecipe()
 
 
 def _comparison_payload(basis: str, current_month: str, current_value: float,
@@ -266,13 +289,125 @@ def descriptive(intent: Intent, res: sl.Resolution) -> AnswerArtifact:
     return art
 
 
+def _top_writers_retrieval(
+        intent: Intent, res: sl.Resolution, accounts: pd.DataFrame,
+        recipe: TopWritersRecipe = DEFAULT_TOP_WRITERS_RECIPE) -> AnswerArtifact:
+    """Rank eligible HCPs by governed trailing-12-month NRx share."""
+
+    recipe_payload = asdict(recipe)
+    recipe_hash = _stable_hash(recipe_payload)
+    required = {
+        "account_id", "npi", "name", "specialty", "territory", "district",
+        "region", "payer_channel", recipe.numerator, recipe.denominator,
+        recipe.selection_metric, "decile",
+    }
+    missing = required - set(accounts.columns)
+    if missing:
+        art = AnswerArtifact(
+            intent.question, intent.question_class, TIER_ABSTAINED, "abstention",
+            headline=("Declined: governed Top writers inputs are unavailable: "
+                      + ", ".join(sorted(missing)) + "."),
+            resolution=res,
+        )
+        art.extras.update({"recipe": recipe_payload, "recipe_hash": recipe_hash})
+        return art
+
+    eligible = accounts[
+        (accounts[recipe.numerator] >= recipe.min_nrx_ttm)
+        & (accounts[recipe.denominator] >= recipe.min_market_nrx_ttm)
+        & accounts[recipe.selection_metric].notna()
+    ].copy()
+    scope = sl.scope_string(intent.filters)
+    common_extras = {
+        "recipe": recipe_payload,
+        "recipe_hash": recipe_hash,
+        "scope": dict(intent.filters),
+        "scoped_account_count": int(len(accounts)),
+        "eligible_account_count": int(len(eligible)),
+        "excluded_account_count": int(len(accounts) - len(eligible)),
+        "column_roles": {
+            "numerator": recipe.numerator,
+            "denominator": recipe.denominator,
+            "share": recipe.selection_metric,
+        },
+        "interpretation": recipe.interpretation,
+    }
+    floor_text = (
+        f"NRx TTM ≥ {recipe.min_nrx_ttm:g} and market NRx TTM ≥ "
+        f"{recipe.min_market_nrx_ttm:g}"
+    )
+    if eligible.empty:
+        art = AnswerArtifact(
+            intent.question, intent.question_class, TIER_ABSTAINED, "abstention",
+            headline=(f"Declined: no HCPs in {scope} meet the governed Top writers "
+                      f"floors ({floor_text})."),
+            resolution=res,
+        )
+        art.caveats.append(
+            "This governed recipe is a descriptive ranking only and cannot support "
+            "causal claims about why an HCP has higher NRx share.")
+        art.extras.update(common_extras)
+        return art
+
+    out = eligible.sort_values(
+        [recipe.selection_metric, recipe.numerator, "account_id"],
+        ascending=[False, False, True], kind="mergesort",
+    ).head(recipe.top_n).copy()
+    out.insert(0, "rank", range(1, len(out) + 1))
+    out["npi"] = out["npi"].astype(str)
+    out = out[[
+        "rank", "account_id", "npi", "name", "specialty", "territory",
+        "district", "region", "payer_channel", recipe.numerator,
+        recipe.denominator, recipe.selection_metric, "decile",
+    ]].reset_index(drop=True)
+    code = (
+        "hcp = filter(load('accounts'), filters)\n"
+        f"eligible = hcp[(hcp.nrx_ttm >= {recipe.min_nrx_ttm:g}) & "
+        f"(hcp.market_nrx_ttm >= {recipe.min_market_nrx_ttm:g}) & "
+        "hcp.nrx_share_ttm.notna()]\n"
+        "out = stable_sort(eligible, nrx_share_ttm DESC, nrx_ttm DESC, "
+        f"account_id ASC).head({recipe.top_n})\n"
+        "# Descriptive ranking only; no causal inference."
+    )
+    art = AnswerArtifact(
+        intent.question, intent.question_class, TIER_VERIFIED, "retrieval",
+        headline=(f"Top {len(out)} of {len(eligible)} eligible HCP writers in {scope} "
+                  "by trailing-12-month NRx share "
+                  f"({floor_text}); descriptive ranking only, not causal."),
+        table=out, code=code, resolution=res,
+    )
+    art.caveats.extend([
+        "Descriptive ranking only: this result does not establish why an HCP has "
+        "higher NRx share and must not be interpreted causally.",
+        f"Eligibility floors: {floor_text}; top {recipe.top_n} requested.",
+        "NRx share is trailing-12-month brand NRx (numerator) divided by "
+        "trailing-12-month market NRx (denominator).",
+        "Ties resolve deterministically by NRx share descending, NRx TTM "
+        "descending, then account ID ascending.",
+    ])
+    art.extras.update(common_extras)
+    art.extras["selected_count"] = int(len(out))
+    return art
+
+
 def retrieval(intent: Intent, res: sl.Resolution) -> AnswerArtifact:
     supported_account_metrics = {"trx": "trx_ttm", "nrx": "nrx_ttm", "nbrx": "nbrx_ttm"}
-    if intent.metric not in supported_account_metrics or (
-            intent.template == "whitespace" and intent.metric != "trx"):
-        detail = ("the whitespace definition is governed on trailing TRx"
-                  if intent.template == "whitespace" else
-                  "account ranking is registered only for TRx, NRx, and NBRx")
+    valid_template = intent.template in {"whitespace", "top_accounts", "top_writers"}
+    metric_supported = intent.metric in supported_account_metrics
+    recipe_metric_supported = (
+        intent.metric == "trx" if intent.template == "whitespace"
+        else intent.metric == "nrx" if intent.template == "top_writers"
+        else metric_supported
+    )
+    if not valid_template or not metric_supported or not recipe_metric_supported:
+        if intent.template == "whitespace":
+            detail = "the whitespace definition is governed on trailing TRx"
+        elif intent.template == "top_writers":
+            detail = "the Top writers definition is governed on trailing NRx share"
+        elif not valid_template:
+            detail = "the requested account recipe is not registered"
+        else:
+            detail = "account ranking is registered only for TRx, NRx, and NBRx"
         art = AnswerArtifact(
             intent.question, intent.question_class, TIER_ABSTAINED, "abstention",
             headline=f"Declined: {detail}; no different metric was substituted.",
@@ -286,11 +421,13 @@ def retrieval(intent: Intent, res: sl.Resolution) -> AnswerArtifact:
     if acc.empty:
         return _no_data_refusal(intent, res)
 
-    if intent.template == "whitespace":
+    if intent.template == "top_writers":
+        art = _top_writers_retrieval(intent, res, acc)
+    elif intent.template == "whitespace":
         out = acc[(acc["decile"] >= 8) & (acc["months_since_rx"] >= 3)
                   & (acc["months_since_activity"] >= 3) & (acc["calls_90d"] == 0)] \
             .sort_values("trx_ttm", ascending=False) \
-            [["account_id", "name", "specialty", "territory", "district", "region",
+            [["account_id", "npi", "name", "specialty", "territory", "district", "region",
               "payer_channel", "trx_ttm", "nrx_ttm", "nbrx_ttm", "decile",
               "months_since_rx", "months_since_activity", "calls_90d",
               "call_plan_90d"]].reset_index(drop=True)
@@ -303,7 +440,7 @@ def retrieval(intent: Intent, res: sl.Resolution) -> AnswerArtifact:
     else:
         ranking_column = supported_account_metrics[intent.metric]
         out = acc.sort_values(ranking_column, ascending=False).head(15) \
-            [["account_id", "name", "specialty", "territory", "region", "trx_ttm",
+            [["account_id", "npi", "name", "specialty", "territory", "region", "trx_ttm",
               "nrx_ttm", "nbrx_ttm", "decile", "calls_90d", "call_plan_90d"]] \
             .reset_index(drop=True)
         code = ("hcp = load('accounts')\n"
@@ -311,10 +448,10 @@ def retrieval(intent: Intent, res: sl.Resolution) -> AnswerArtifact:
                 f"out = hcp.nlargest(15, '{ranking_column}')")
         headline = (f"Top {len(out)} HCP accounts by trailing-twelve-month "
                     f"{sl.METRICS[intent.metric]['label']}")
-
-    art = AnswerArtifact(intent.question, intent.question_class, TIER_VERIFIED, "retrieval",
-                         headline=headline, table=out, code=code)
-    art.resolution = res
+    if intent.template != "top_writers":
+        art = AnswerArtifact(intent.question, intent.question_class, TIER_VERIFIED, "retrieval",
+                             headline=headline, table=out, code=code)
+        art.resolution = res
     # computed from the source registry's grain metadata
     with_grain = [s["name"] for s in sl.SOURCES.values() if s.get("account_grain")]
     without_grain = [s["name"] for s in sl.SOURCES.values() if not s.get("account_grain")]

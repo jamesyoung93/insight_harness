@@ -1,16 +1,27 @@
 """Glanceable governed KPIs composed with the question workspace."""
 from __future__ import annotations
 
+import copy
+import html
+import json
 import logging
+from dataclasses import asdict, replace
 
 import altair as alt
 import pandas as pd
 import streamlit as st
 
-from harness import profiles, saved_insights, services, tile_runtime, tiles
+from harness import baskets, digest as digest_service
+from harness import profiles, saved_insights, services, tile_runtime, tiles, triage
 from harness import semantic_layer as sl
+from harness.digest_store import InMemoryDigestHistoryStore
 from harness.provenance import TIER_ABSTAINED
-from views import ask, common
+from views import ask, common, digest as digest_view, tile_detail
+
+try:  # The tested buttons remain available if the optional component cannot load.
+    from streamlit_sortables import sort_items
+except ImportError:  # pragma: no cover - exercised in minimal local test installs
+    sort_items = None
 
 
 _CONTROL_KEYS = ("home_window", "home_basis", "home_scope", "home_source", "home_variant")
@@ -29,6 +40,22 @@ def _cached_tile(cache_identity: tiles.TileCacheKey):
         cache_identity.spec, scope=dict(cache_identity.effective_scope)).artifact
 
 
+@st.cache_data(show_spinner=False)
+def _cached_home_digest(data_version: str, governance_fingerprint: str,
+                        persona_label: str, scope_json: str, watches_json: str):
+    """Cache the fixed walk-in strip across reruns for identical governed inputs."""
+
+    del data_version, governance_fingerprint  # hash-only cache identity inputs
+    return digest_service.build_digest(
+        persona=persona_label,
+        scope=json.loads(scope_json),
+        watches=json.loads(watches_json),
+        store=InMemoryDigestHistoryStore(),
+        limit=3,
+        record=False,
+    )
+
+
 def _format_value(art) -> str:
     return common.format_artifact_value(art, art.value, places=0)
 
@@ -36,32 +63,56 @@ def _format_value(art) -> str:
 def _format_delta(art) -> str | None:
     comparison = art.extras.get("comparison", {})
     delta = common.format_comparison_delta(art, comparison)
-    if delta is None:
+    if delta is None and comparison.get("available") and art.resolution is not None:
+        # Count metrics frequently have a zero reference, so a relative percent
+        # is undefined even though the native movement is perfectly meaningful.
+        delta = common.format_native_delta(
+            art.resolution.metric, art.resolution.variant, comparison.get("delta"))
+        if delta == "—":
+            return None
+    elif delta is None:
         return None
     label = comparison.get("basis_label", "comparison")
     return f"{delta} {label}"
 
 
-def _sparkline(chart_df: pd.DataFrame | None) -> None:
+def _sparkline_domain(chart_df: pd.DataFrame, *, padding_ratio: float = 0.08) \
+        -> list[float] | None:
+    """Backward-compatible tile wrapper around the shared chart-domain rule."""
+
+    return common.visible_y_domain(chart_df, padding_ratio=padding_ratio)
+
+
+def _sparkline_chart(chart_df: pd.DataFrame | None) -> alt.Chart | None:
+    """Build the compact chart separately so its visual contract is testable."""
+
     if chart_df is None or chart_df.empty:
-        st.caption("No trend is available for this scope.")
-        return
+        return None
     series = [column for column in chart_df.columns if column != "month"]
     long = chart_df.melt("month", var_name="series", value_name="value").dropna()
     if long.empty:
-        return
+        return None
     palette = [common.C_PRIMARY, common.C_REFERENCE][:len(series)]
     dash = [[1, 0], [6, 4]][:len(series)]
-    chart = alt.Chart(long).mark_line(point=True, strokeWidth=2).encode(
+    domain = _sparkline_domain(chart_df)
+    return alt.Chart(long).mark_line(point=False, strokeWidth=2).encode(
         x=alt.X("month:O", axis=None),
-        y=alt.Y("value:Q", axis=None, scale=alt.Scale(zero=False)),
-        color=alt.Color("series:N", legend=alt.Legend(title=None, orient="bottom"),
+        y=alt.Y("value:Q", axis=None,
+                scale=alt.Scale(domain=domain, zero=False, nice=False)),
+        color=alt.Color("series:N", legend=None,
                         scale=alt.Scale(domain=series, range=palette)),
         strokeDash=alt.StrokeDash("series:N", legend=None,
                                   scale=alt.Scale(domain=series, range=dash)),
         tooltip=[alt.Tooltip("month:O"), alt.Tooltip("series:N"),
                  alt.Tooltip("value:Q", format=",.1f")],
-    ).properties(height=82, description="KPI trend; reference series uses a dashed line.")
+    ).properties(height=72, description="KPI trend; reference series uses a dashed line.")
+
+
+def _sparkline(chart_df: pd.DataFrame | None) -> None:
+    chart = _sparkline_chart(chart_df)
+    if chart is None:
+        st.caption("No trend is available for this scope.")
+        return
     st.altair_chart(chart, width="stretch")
 
 
@@ -72,6 +123,21 @@ def _compact_stamp(art) -> None:
     st.caption(f"{source} · result `{art.result_hash}` · data `{art.data_version}`")
     if resolution:
         st.caption(resolution.reason)
+
+
+def _tile_badges(art, *, material_forks: int = 0, override_notes: int = 0) -> None:
+    badges = [common.chip(art.tier)]
+    if material_forks:
+        badges.append(
+            '<span class="question-chip" style="border:1px solid #B07C0E;'
+            'border-radius:12px;padding:2px 9px;font-size:.78rem;color:#765100">'
+            f'⚠ {material_forks} definition fork{"s" if material_forks != 1 else ""}</span>')
+    if override_notes:
+        badges.append(
+            '<span class="question-chip" style="border:1px solid #6B7280;'
+            'border-radius:12px;padding:2px 9px;font-size:.78rem;color:#52514e">'
+            f'{override_notes} override note{"s" if override_notes != 1 else ""}</span>')
+    st.markdown(" ".join(badges), unsafe_allow_html=True)
 
 
 def _tile_label(definition: tiles.TileDefinition, scope) -> str:
@@ -115,6 +181,11 @@ def _format_fork_value(art, value: float) -> str:
 def _render_tile_body(definition: tiles.TileDefinition, spec: tiles.SavedQuestionSpec,
                       scope, art) -> None:
     label = _tile_label(definition, scope)
+    basket_resolution = art.extras.get("basket_resolution", {})
+    basket_id = basket_resolution.get("basket_id") if isinstance(
+        basket_resolution, dict) else None
+    if basket_id in baskets.BASKETS:
+        label += f" · {baskets.BASKETS[basket_id].label}"
     if spec.viz_kind == "count":
         count = len(art.table) if art.table is not None else 0
         st.metric(label, f"{count:,}")
@@ -130,22 +201,50 @@ def _render_tile_body(definition: tiles.TileDefinition, spec: tiles.SavedQuestio
                          height=min(300, 38 + 35 * min(len(art.table), 8)))
     else:
         st.metric(label, _format_value(art), _format_delta(art))
+        if art.resolution and art.resolution.metric == "new_writers":
+            current_month = art.extras.get("comparison", {}).get("current_month")
+            period = f" · latest {current_month}" if current_month else ""
+            st.caption(f"{spec.window} monthly trend{period}")
         if spec.viz_kind in ("sparkline", "line"):
             _sparkline(art.chart_df)
 
 
 def _tile_actions(definition: tiles.TileDefinition, spec: tiles.SavedQuestionSpec,
-                  scope, art) -> None:
+                  scope, art, *, material_forks=(), disclosures=(),
+                  definition_notes=()) -> None:
     filters = tiles.effective_spec_filters(spec, scope)
     window_n = tiles.WINDOW_CONTROLS[spec.window] \
-        if spec.question_class != "Retrieval" else None
+        if spec.question_class not in (triage.RETRIEVAL, triage.COHORT) else None
     basis_code = tiles.BASIS_CONTROLS[spec.basis] \
-        if spec.question_class != "Retrieval" else None
+        if spec.question_class not in (triage.RETRIEVAL, triage.COHORT) else None
     breakdown = services.breakdown_question(spec.metric, filters, window_n, basis_code)
     question = tiles.canonical_question_for_spec(spec, scope)
+    expand = False
     with st.popover(f"Actions for {definition.label}", width="stretch"):
-        st.button(f"Watch {definition.label}", key=f"tile_{definition.id}_watch",
-                  on_click=_watch_tile, args=(spec, scope, definition), width="stretch")
+        resolution = art.resolution
+        source = sl.SOURCES[resolution.source]["name"] if resolution else "No source"
+        st.caption(f"{art.tier} · {source} · data `{art.data_version}` · "
+                   f"result `{art.result_hash}`")
+        if resolution:
+            st.caption(resolution.reason)
+        for note in definition_notes:
+            st.caption(f"Definition: {note}")
+        for disclosure in disclosures:
+            st.caption(f"Override note: {disclosure}")
+        if material_forks:
+            st.markdown("**Material definition forks**")
+            for fork in material_forks:
+                note = f" · {fork['note']}" if fork.get("note") else ""
+                st.markdown(f"- **{fork['label']}**: {_format_fork_value(art, fork['value'])} "
+                            f"({fork['rel_diff'] * 100:+.1f}%){note}")
+        if resolution or disclosures or material_forks:
+            st.divider()
+        expand = st.button(
+            f"Expand {definition.label}", key=f"tile_{definition.id}_expand",
+            width="stretch", help="Open a large governed chart with local drill controls.")
+        if spec.question_class != triage.COHORT:
+            st.button(f"Watch {definition.label}", key=f"tile_{definition.id}_watch",
+                      on_click=_watch_tile, args=(spec, scope, definition), width="stretch")
         st.download_button(
             f"Download {definition.label} JSON", data=art.to_json(),
             file_name=f"tile_{definition.id}_{art.result_hash}.json",
@@ -153,9 +252,32 @@ def _tile_actions(definition: tiles.TileDefinition, spec: tiles.SavedQuestionSpe
         st.button(f"Open {definition.label}", key=f"tile_{definition.id}_open",
                   on_click=_queue_tile_question,
                   args=(question, spec.source, spec.variant, basis_code), width="stretch")
-        st.button(f"Break down {definition.label}", key=f"tile_{definition.id}_breakdown",
-                  on_click=_queue_tile_question,
-                  args=(breakdown, spec.source, spec.variant, basis_code), width="stretch")
+        if spec.question_class != triage.COHORT:
+            st.button(f"Break down {definition.label}", key=f"tile_{definition.id}_breakdown",
+                      on_click=_queue_tile_question,
+                      args=(breakdown, spec.source, spec.variant, basis_code), width="stretch")
+    if expand:
+        tile_detail.show_tile_dialog(definition.id, spec, scope)
+
+
+def _adaptive_basket(materialized: tiles.MaterializedSpec, scope,
+                     requested_variant: str | None):
+    """Resolve share tiles to one named basket before cache identity is built."""
+
+    if materialized.spec.metric != "trx_share":
+        return materialized, None
+    filters = tiles.effective_spec_filters(materialized.spec, scope)
+    stage = baskets.adoption_stage_for_scope(filters)
+    override_by_variant = {
+        "il17_class": "il17_class",
+        "advanced_therapy": "advanced_therapy",
+        "brand_market": "advanced_therapy",
+    }
+    override = override_by_variant.get(requested_variant or "")
+    resolution = baskets.resolve_basket(stage, override)
+    spec = tiles.require_valid_spec(replace(
+        materialized.spec, variant=resolution.semantic_variant))
+    return replace(materialized, spec=spec), resolution
 
 
 def _render_tile(definition: tiles.TileDefinition, window: str, basis: str,
@@ -163,6 +285,8 @@ def _render_tile(definition: tiles.TileDefinition, window: str, basis: str,
     try:
         materialized = tiles.materialize_spec(
             definition, window=window, basis=basis, source=source, variant=variant)
+        materialized, basket_resolution = _adaptive_basket(
+            materialized, scope, variant)
         scope_disclosures = tiles.fixed_scope_disclosures(materialized.spec, scope)
         identity = tiles.cache_key_for_spec(materialized.spec, scope=scope)
         art = _cached_tile(identity)
@@ -171,24 +295,40 @@ def _render_tile(definition: tiles.TileDefinition, window: str, basis: str,
         st.error(f"{definition.label} could not be evaluated; no unverified value is shown.")
         return
 
+    definition_notes = ()
+    if basket_resolution is not None:
+        art = copy.deepcopy(art)
+        art.extras["basket_resolution"] = asdict(basket_resolution)
+        art.extras["basket_registry_fingerprint"] = baskets.registry_fingerprint()
+        chart_months = (
+            art.chart_df["month"].dropna().astype(str).drop_duplicates().tolist()
+            if art.chart_df is not None and "month" in art.chart_df else None
+        )
+        art.extras["basket_reconciliation"] = baskets.reconciliation_for_scope(
+            basket_resolution.basket_id,
+            tiles.effective_spec_filters(materialized.spec, scope),
+            chart_months,
+            art.resolution.source if art.resolution is not None else "source_a",
+        )
+        if art.resolution is not None:
+            art.resolution.reason = (
+                f"{basket_resolution.reason}; {art.resolution.reason}")
+        if basket_resolution.disclosure not in art.caveats:
+            art.caveats.append(basket_resolution.disclosure)
+        definition_notes = (basket_resolution.disclosure,)
+
     if art.tier == TIER_ABSTAINED:
         st.error(art.headline)
         _compact_stamp(art)
         return
 
-    _render_tile_body(definition, materialized.spec, scope, art)
-    _compact_stamp(art)
-    for disclosure in (*materialized.disclosures, *scope_disclosures):
-        st.caption(f"Override note: {disclosure}")
-
+    disclosures = (*materialized.disclosures, *scope_disclosures)
     material = [fork for fork in art.divergence if fork.get("material")]
-    if material:
-        with st.expander(f"⚠ {len(material)} material definition fork(s)"):
-            for fork in material:
-                note = f" · {fork['note']}" if fork.get("note") else ""
-                st.markdown(f"- **{fork['label']}**: {_format_fork_value(art, fork['value'])} "
-                            f"({fork['rel_diff'] * 100:+.1f}%){note}")
-    _tile_actions(definition, materialized.spec, scope, art)
+    _render_tile_body(definition, materialized.spec, scope, art)
+    _tile_badges(art, material_forks=len(material), override_notes=len(disclosures))
+    _tile_actions(definition, materialized.spec, scope, art,
+                  material_forks=material, disclosures=disclosures,
+                  definition_notes=definition_notes)
 
 
 def _restore_controls() -> None:
@@ -323,8 +463,28 @@ def _reset_persona(persona_id: str) -> None:
 
 def _customize_tiles(persona: profiles.PersonaDefinition) -> profiles.LayoutResolution:
     state = profiles.layout_for(st.session_state, persona)
-    with st.expander("Customize tiles"):
+    with st.popover("Customize tiles", width="stretch"):
         st.caption("Changes stay in this app session and never alter another viewer's layout.")
+        if sort_items is not None and len(state.tile_ids) > 1:
+            label_to_id = {tiles.TILES_BY_ID[tile_id].label: tile_id
+                           for tile_id in state.tile_ids}
+            sorted_labels = sort_items(
+                list(label_to_id), direction="vertical",
+                key=f"home_{persona.id}_drag_order",
+                custom_style="""
+                    .sortable-component { padding: 0; margin: 0 0 .5rem 0; }
+                    .sortable-item { border: 1px solid #d9e0e8; border-radius: 7px;
+                        background: #f7f9fc; color: #172033; padding: 7px 10px;
+                        margin: 4px 0; cursor: grab; }
+                """,
+            )
+            if (len(sorted_labels) == len(label_to_id)
+                    and set(sorted_labels) == set(label_to_id)):
+                sorted_ids = tuple(label_to_id[label] for label in sorted_labels)
+                if sorted_ids != state.tile_ids:
+                    profiles.reorder_tiles(st.session_state, persona, sorted_ids)
+                    state = profiles.layout_for(st.session_state, persona)
+            st.caption("Drag tiles above to reorder. Buttons below are the keyboard fallback.")
         for index, tile_id in enumerate(state.tile_ids):
             definition = tiles.TILES_BY_ID[tile_id]
             label, up, down, remove = st.columns([3.4, 1, 1, 1.2])
@@ -376,7 +536,7 @@ def _customize_tiles(persona: profiles.PersonaDefinition) -> profiles.LayoutReso
 
 def _control_band(definitions: tuple[tiles.TileDefinition, ...]):
     _restore_controls()
-    c1, c2, c3 = st.columns([2, 2, 2])
+    c1, c2, c3, c4 = st.columns([1.7, 1.7, 2.4, 1.25], gap="small")
     window = c1.radio("Window", tuple(tiles.WINDOW_CONTROLS), horizontal=True,
                       key="home_window")
     basis = c2.radio("Compare", tuple(tiles.BASIS_CONTROLS), horizontal=True,
@@ -389,18 +549,24 @@ def _control_band(definitions: tuple[tiles.TileDefinition, ...]):
         "Scope", tuple(option_by_key), key="home_scope",
         format_func=lambda key: option_by_key[key].label,
         help="Scope by geography, specialty, or payer channel using registered values.")
-    c4, c5 = st.columns(2)
     metric_ids = {definition.metric for definition in definitions}
     sources = tuple(source for source in sl.SOURCES
                     if any(source in sl.METRICS[metric]["sources"] for metric in metric_ids))
-    source_pick = c4.selectbox(
-        "Prescription source", ("governed default", *sources), key="home_source",
-        format_func=lambda value: value if value == "governed default" else sl.SOURCES[value]["name"])
     variants = tuple(sorted({variant for metric in metric_ids
                              for variant in sl.METRICS[metric]["variants"]}))
-    variant_pick = c5.selectbox(
-        "Sales type", ("governed default", *variants),
-        key="home_variant")
+    override_active = any(st.session_state.get(key) not in (None, "governed default")
+                          for key in ("home_source", "home_variant"))
+    with c4:
+        with st.popover("Data options" + (" · override" if override_active else ""),
+                        width="stretch"):
+            source_pick = st.selectbox(
+                "Prescription source", ("governed default", *sources), key="home_source",
+                format_func=lambda value: value if value == "governed default"
+                else sl.SOURCES[value]["name"])
+            variant_pick = st.selectbox(
+                "Sales type", ("governed default", *variants), key="home_variant")
+            st.caption("Overrides apply only where registered; fixed definitions are retained "
+                       "and disclosed.")
     _remember_controls()
     return (window, basis, option_by_key[scope_key].filters,
             None if source_pick == "governed default" else source_pick,
@@ -408,10 +574,12 @@ def _control_band(definitions: tuple[tiles.TileDefinition, ...]):
 
 
 def render_kpi_band(persona: profiles.PersonaDefinition) -> None:
-    st.subheader("Business pulse")
+    heading, customize = st.columns([5, 1.25], gap="small")
+    heading.subheader("Business pulse")
+    with customize:
+        layout = _customize_tiles(persona)
     st.caption("Monthly governed metrics. Compatible tiles use the selected controls; a tile "
                "with a conflicting fixed scope keeps its governed definition and says so.")
-    layout = _customize_tiles(persona)
     definitions = tuple(tiles.TILES_BY_ID[tile_id] for tile_id in layout.tile_ids)
     if not definitions:
         st.info("No tiles are selected for this persona. Add one under Customize tiles.")
@@ -419,17 +587,94 @@ def render_kpi_band(persona: profiles.PersonaDefinition) -> None:
     window, basis, scope, source, variant = _control_band(definitions)
     for start in range(0, len(definitions), 3):
         row = definitions[start:start + 3]
-        columns = st.columns(len(row), gap="medium")
+        # Always reserve three equal slots so a partial final row never stretches
+        # into visually different card widths.
+        columns = st.columns(3, gap="medium")
         for column, definition in zip(columns, row):
             with column:
-                _render_tile(definition, window, basis, scope, source, variant)
+                with st.container(border=True):
+                    _render_tile(definition, window, basis, scope, source, variant)
+
+
+def _render_digest_strip(persona: profiles.PersonaDefinition) -> None:
+    """Show the three executive stories immediately on entry, then link through."""
+
+    try:
+        scope = dict(tiles.scope_from_key(
+            st.session_state.get("home_scope", tiles.ALL_SCOPES)))
+    except ValueError:
+        scope = dict(persona.digest_scope)
+    insights = saved_insights.session_store(st.session_state).all()
+    watches, _ = digest_view._descriptive_watch_inputs(insights)
+    try:
+        artifact = _cached_home_digest(
+            sl.data_version(), digest_service.governance_fingerprint(), persona.label,
+            json.dumps(scope, sort_keys=True),
+            json.dumps(watches, sort_keys=True, default=list),
+        )
+    except Exception:
+        logging.getLogger(__name__).exception("home digest strip failed")
+        st.caption("The governed digest strip is temporarily unavailable; open Digest to retry.")
+        return
+
+    heading, open_digest = st.columns([5, 1.2], gap="small")
+    heading.subheader("What deserves attention")
+    open_digest.button(
+        "Open Digest", key="home_open_digest", on_click=common.goto,
+        args=("Digest",), width="stretch")
+    st.caption(
+        f"Top {len(artifact.items)} scope-diverse governed stories · scanned "
+        f"{artifact.scanned_series} series · digest `{artifact.result_hash}`"
+    )
+    if not artifact.items:
+        st.info("No governed signal has enough history to rank yet.")
+        return
+
+    expanded = None
+    columns = st.columns(3, gap="medium")
+    for index, (column, item) in enumerate(zip(columns, artifact.items), start=1):
+        with column:
+            # A true strip: action shares the metadata row, the headline is a
+            # one-line preview, and the full artifact remains one click away.
+            metadata, action = st.columns([3.5, 1], gap="small")
+            with metadata:
+                st.markdown(
+                    common.chip(item.candidate.artifact.tier)
+                    + f"&nbsp; {common.chip(item.category_label)}",
+                    unsafe_allow_html=True,
+                )
+            with action:
+                if st.button(
+                        "Open", key=f"home_digest_expand_{index}_{item.result_hash}",
+                        width="stretch", help="Open the complete governed story."):
+                    expanded = item
+            headline = item.headline
+            if len(headline) > 86:
+                boundary = headline.rfind(" ", 0, 83)
+                headline = headline[:boundary if boundary > 58 else 83] + "…"
+            st.markdown(
+                '<div style="font-size:.86rem;font-weight:650;line-height:1.3;'
+                'height:1.2rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
+                'margin:0 0 .05rem 0">'
+                f'{html.escape(headline)}</div>',
+                unsafe_allow_html=True,
+            )
+            sparkline = digest_view._sparkline_chart(item)
+            if sparkline is not None:
+                st.altair_chart(sparkline.properties(height=34), width="stretch")
+    if expanded is not None:
+        digest_view.show_digest_dialog(expanded)
 
 
 def render() -> None:
-    st.title("Home")
-    st.caption("Start with the governed state of the business, then interrogate any number. "
-               "Every surface resolves through the same deterministic answer pipeline.")
-    persona = _persona_selector()
+    intro, persona_control = st.columns([3.5, 1.5], gap="medium")
+    with intro:
+        st.title("Home")
+        st.caption("Start with the governed state of the business, then interrogate any number. "
+                   "Every surface resolves through the same deterministic answer pipeline.")
+    with persona_control:
+        persona = _persona_selector()
+    _render_digest_strip(persona)
     render_kpi_band(persona)
     st.divider()
     st.subheader("Explore")

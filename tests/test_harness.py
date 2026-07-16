@@ -186,7 +186,13 @@ def test_accounts_reconcile_to_fact_and_whitespace_is_true_no_activity():
 
 def test_new_writer_metric_is_derived_from_first_observed_positive_trx():
     frame = sl.load_fact("source_a").sort_values(["account_id", "month"])
-    observed = frame[frame["trx_units"] > 0].groupby("account_id").head(1).index
-    expected = pd.Series(0, index=frame.index)
+    warmup = frame["month"].min()
+    observed = frame[(frame["trx_units"] > 0) & (frame["month"] != warmup)] \
+        .groupby("account_id").head(1).index
+    # Incumbents first observed in the warm-up month are not new writers later.
+    incumbents = set(frame[(frame["trx_units"] > 0) & (frame["month"] == warmup)]["account_id"])
+    observed = [idx for idx in observed if frame.loc[idx, "account_id"] not in incumbents]
+    expected = pd.Series(0.0, index=frame.index)
+    expected.loc[frame["month"] == warmup] = float("nan")
     expected.loc[observed] = 1
-    assert (frame["new_writers"].astype(int) == expected).all()
+    pd.testing.assert_series_equal(frame["new_writers"], expected, check_names=False)

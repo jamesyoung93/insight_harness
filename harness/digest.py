@@ -22,10 +22,16 @@ from .digest_store import (DigestHistoryStore, InMemoryDigestHistoryStore,
 from .provenance import AnswerArtifact, TIER_ABSTAINED
 
 
-DIGEST_VERSION = 3
-MOVEMENT_RANKING_METHOD = "latest_vs_prior_six_month_mean"
+DIGEST_VERSION = 4
+MOVEMENT_RANKING_METHOD = "priority_score_v2_latest_vs_prior_six_month_mean"
 DIVERGENCE_RANKING_METHOD = "material_definition_fork_relative_difference"
 _TYPE_WEIGHT = {"anomaly": 1.0, "watch": 1.25, "divergence": 1.15, "event": 1.1}
+CATEGORY_LABELS = {
+    "anomaly": "Movement",
+    "watch": "Watched",
+    "divergence": "Definition fork",
+    "event": "Event overlap",
+}
 DIGEST_METRICS = ("trx", "nrx", "nbrx", "trx_share", "calls", "samples",
                   "speaker_attendance", "new_writers")
 DIGEST_DIMENSIONS = ("region", "specialty", "payer_channel")
@@ -86,6 +92,16 @@ class MovementFacts:
     absolute_change: float
     relative_change: float
     history_months: int
+    trailing_min: float = 0.0
+    trailing_max: float = 0.0
+    business_delta: float = 0.0
+    national_monthly_volume: float = 0.0
+    standardized_term: float = 0.0
+    relative_term: float = 0.0
+    business_scale_term: float = 0.0
+    business_scale_share: float = 0.0
+    low_base: bool = False
+    low_base_reason: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -97,6 +113,16 @@ class MovementFacts:
             "absolute_change": self.absolute_change,
             "relative_change": self.relative_change,
             "history_months": self.history_months,
+            "trailing_min": self.trailing_min,
+            "trailing_max": self.trailing_max,
+            "business_delta": self.business_delta,
+            "national_monthly_volume": self.national_monthly_volume,
+            "standardized_term": self.standardized_term,
+            "relative_term": self.relative_term,
+            "business_scale_term": self.business_scale_term,
+            "business_scale_share": self.business_scale_share,
+            "low_base": self.low_base,
+            "low_base_reason": self.low_base_reason,
         }
 
 
@@ -193,6 +219,10 @@ class DigestItemArtifact:
     def headline(self) -> str:
         return str(self.narration.get("text") or self.template_headline)
 
+    @property
+    def category_label(self) -> str:
+        return CATEGORY_LABELS.get(self.candidate.kind, "Signal")
+
     def with_narration(self, text: str, metadata: dict) -> "DigestItemArtifact":
         return replace(self, narration={**metadata, "text": text})
 
@@ -213,7 +243,19 @@ class DigestItemArtifact:
         return {
             "id": MOVEMENT_RANKING_METHOD,
             "description": (
-                "Latest observed month compared with the mean of the preceding six months."
+                "Latest observed month compared with the preceding six-month mean, "
+                "ranked with priority score v2 (standardized, relative, and business-scale "
+                "movement)."
+            ),
+            "formula": services.PRIORITY_SCORE_FORMULA,
+            "weights": dict(services.PRIORITY_SCORE_WEIGHTS),
+            "business_scale_definition": (
+                "Native-unit movement divided by the metric's national monthly volume; "
+                "ratio movements use implied numerator units from the scoped denominator."
+            ),
+            "low_base_guard": (
+                "Relative and business-scale terms are suppressed below the registered "
+                "trailing-mean or ratio-denominator floor."
             ),
             "latest_periods": 1,
             "baseline_periods": 6,
@@ -227,6 +269,7 @@ class DigestItemArtifact:
         return {
             "signal_key": self.candidate.semantic_key,
             "kind": self.candidate.kind,
+            "category_label": self.category_label,
             "metric": self.candidate.metric,
             "metric_label": sl.METRICS[self.candidate.metric]["label"],
             "scope": sl.scope_string(self.candidate.filter_dict),
@@ -425,7 +468,8 @@ def _answer_artifact(metric: str, filters: Mapping,
                                    requested_source, requested_variant)
 
 
-def _movement(artifact: AnswerArtifact) -> MovementFacts | None:
+def _movement(artifact: AnswerArtifact, metric: str | None = None,
+              filters: Mapping | None = None) -> MovementFacts | None:
     chart = artifact.chart_df
     if artifact.tier == TIER_ABSTAINED or chart is None or chart.empty:
         return None
@@ -447,19 +491,71 @@ def _movement(artifact: AnswerArtifact) -> MovementFacts | None:
     absolute = latest - mean
     relative = absolute / abs(mean) if mean else 0.0
     z = absolute / std if std else 0.0
+    metric = metric or getattr(artifact.resolution, "metric", None)
+    source = getattr(artifact.resolution, "source", None)
+    variant = getattr(artifact.resolution, "variant", None)
+    business_delta = abs(absolute)
+    national_volume = 0.0
+    low_base = False
+    low_base_reason = ""
+    history_months = [str(value) for value in valid["month"].iloc[-7:-1]]
+    if metric in sl.METRICS and source in sl.SOURCES and variant:
+        frame = sl.load_fact(source)
+        scoped = sl.apply_filters(frame, dict(filters or {}))
+        definition = sl.METRICS[metric]
+        value_format = definition["variants"][variant].get("format", "number")
+        if definition.get("kind") == "ratio":
+            scoped_denominator = services._ratio_denominator(
+                scoped, metric, variant, history_months)
+            national_volume = services._ratio_denominator(
+                frame, metric, variant, history_months)
+            business_delta = abs(absolute) * abs(scoped_denominator)
+            low_base = scoped_denominator < services.LOW_BASE_RATIO_DENOMINATOR
+            if low_base:
+                low_base_reason = (
+                    f"trailing denominator {scoped_denominator:,.1f} is below "
+                    f"{services.LOW_BASE_RATIO_DENOMINATOR:,.0f}"
+                )
+        else:
+            national = sl.monthly_metric(frame, metric, variant).dropna()
+            national_history = national[
+                national.index.astype(str).isin(history_months)]
+            national_volume = float(national_history.mean()) \
+                if len(national_history) else 0.0
+            low_base = value_format == "number" and \
+                abs(mean) < services.LOW_BASE_TRAILING_MEAN
+            if low_base:
+                low_base_reason = (
+                    f"trailing mean {mean:,.1f} is below "
+                    f"{services.LOW_BASE_TRAILING_MEAN:,.0f}"
+                )
+    components = services.priority_components_v2(
+        z=float(z), relative_change=float(relative), business_delta=business_delta,
+        national_monthly_volume=national_volume, low_base=low_base,
+    )
     return MovementFacts(
         month=str(valid["month"].iloc[-1]), latest=latest, trailing_mean=mean,
         trailing_std=std, z=float(z), absolute_change=absolute,
         relative_change=float(relative), history_months=len(history),
+        trailing_min=float(history.min()), trailing_max=float(history.max()),
+        business_delta=business_delta, national_monthly_volume=national_volume,
+        standardized_term=float(components["standardized"]),
+        relative_term=float(components["relative"]),
+        business_scale_term=float(components["business_scale"]),
+        business_scale_share=float(components["business_scale_share"]),
+        low_base=low_base, low_base_reason=low_base_reason,
     )
 
 
 def normalized_impact(facts: MovementFacts) -> float:
-    """Comparable [0, 1] score blending standardized and relative movement."""
+    """Comparable [0, 1] priority score v2 using the published contract."""
 
-    z_component = min(abs(facts.z) / 4.0, 1.0)
-    relative_component = min(abs(facts.relative_change) / 0.50, 1.0)
-    return round(0.65 * z_component + 0.35 * relative_component, 8)
+    return services.priority_score_v2(
+        z=facts.z, relative_change=facts.relative_change,
+        business_delta=facts.business_delta,
+        national_monthly_volume=facts.national_monthly_volume,
+        low_base=facts.low_base,
+    )
 
 
 def _scope_contains(filters: Mapping, persona_scope: Mapping) -> bool:
@@ -527,7 +623,7 @@ def scan_candidates(*, persona: str, scope: Mapping | None = None,
         key = (metric, _filter_items(filters), requested_source, requested_variant)
         if key not in artifacts:
             artifact = _answer_artifact(metric, filters, requested_source, requested_variant)
-            artifacts[key] = (artifact, _movement(artifact), priority, scope_rank)
+            artifacts[key] = (artifact, _movement(artifact, metric, filters), priority, scope_rank)
         else:
             artifact, facts, old_priority, old_rank = artifacts[key]
             if (scope_rank, priority) > (old_rank, old_priority):
@@ -639,7 +735,13 @@ def _candidate_score(candidate: SignalCandidate, novelty: float) -> float:
 
 def rank_candidates(candidates: Sequence[SignalCandidate], recent_keys: Iterable[str] = (),
                     limit: int = 3) -> list[tuple[SignalCandidate, float, float]]:
-    """Rank scope tier first, then score; admit one item per digest family."""
+    """Rank scope tier first, then score, family diversity, and scope diversity.
+
+    The first pass admits at most one item per exact scope so a national digest
+    cannot become three different metrics for ``region=South``.  A second pass
+    fills otherwise-empty slots only when the candidate pool has no additional
+    scope, preserving a useful result for deliberately narrow persona scopes.
+    """
 
     recent = tuple(recent_keys)
     scored = [
@@ -650,13 +752,26 @@ def rank_candidates(candidates: Sequence[SignalCandidate], recent_keys: Iterable
     scored.sort(key=lambda row: (-row[0].scope_rank, -row[2], row[0].semantic_key))
     selected: list[tuple[SignalCandidate, float, float]] = []
     families: set[str] = set()
+    scopes: set[tuple] = set()
     for row in scored:
-        if row[0].family in families:
+        scope_key = row[0].filters
+        if row[0].family in families or scope_key in scopes:
             continue
         selected.append(row)
         families.add(row[0].family)
+        scopes.add(scope_key)
         if len(selected) >= max(0, limit):
             break
+    if len(selected) < max(0, limit):
+        selected_keys = {row[0].semantic_key for row in selected}
+        for row in scored:
+            if row[0].semantic_key in selected_keys or row[0].family in families:
+                continue
+            selected.append(row)
+            selected_keys.add(row[0].semantic_key)
+            families.add(row[0].family)
+            if len(selected) >= max(0, limit):
+                break
     return selected
 
 
@@ -701,23 +816,50 @@ def _headline(candidate: SignalCandidate) -> tuple[str, str]:
     if candidate.kind == "divergence":
         rel = float(candidate.fork_relative_difference or 0.0) * 100
         governed = float(candidate.artifact.value or 0.0)
-        headline = (f"{scope} {label} differs {rel:+.1f}% under {candidate.fork_label}; "
-                    f"governed {governed:,.1f} vs alternate {candidate.fork_value:,.1f}.")
+        variant = candidate.artifact.resolution.variant
+        value_format = sl.METRICS[candidate.metric]["variants"][variant].get(
+            "format", "number")
+
+        def formatted(value: float | None) -> str:
+            numeric = float(value or 0.0)
+            if value_format == "percent":
+                return f"{numeric:.1%}"
+            if value_format == "currency":
+                return f"${numeric:,.0f}"
+            return f"{numeric:,.1f}"
+
+        headline = (f"{scope} {label} differs by {abs(rel):.1f}% under {candidate.fork_label}; "
+                    f"governed {formatted(governed)} vs alternate "
+                    f"{formatted(candidate.fork_value)}.")
         impact = f"Material definition fork · {abs(rel):.1f}% relative difference"
         return headline, impact
     facts = candidate.facts
     if facts is None:
         return f"{scope} {label} needs review.", "Computed signal"
-    direction = "above" if facts.absolute_change >= 0 else "below"
-    movement = (f"{abs(facts.z):.1f}σ {direction} its six-month trailing mean"
-                if facts.trailing_std else f"{facts.relative_change * 100:+.1f}% vs its trailing mean")
-    prefix = "Watched: " if candidate.kind == "watch" else ""
+    directional = "higher" if facts.absolute_change >= 0 else "lower"
+    relative_direction = "above" if facts.absolute_change >= 0 else "below"
+    if facts.low_base:
+        headline = (
+            f"{scope} {label} reached {facts.latest:,.0f} versus a typical "
+            f"{facts.trailing_min:,.0f}–{facts.trailing_max:,.0f}; the count was "
+            f"{directional} than its recent norm."
+        )
+        impact = (
+            f"Low-base count · latest {facts.latest:,.0f} · typical range "
+            f"{facts.trailing_min:,.0f}–{facts.trailing_max:,.0f} · percentage suppressed"
+        )
+    else:
+        headline = (
+            f"{scope} {label} was {abs(facts.relative_change) * 100:.1f}% "
+            f"{relative_direction} its recent norm."
+        )
+        impact = (f"Latest {facts.latest:,.1f} · recent norm {facts.trailing_mean:,.1f} · "
+                  f"native movement {facts.absolute_change:+,.1f}")
     if candidate.kind == "event":
-        prefix = f"A registered event ({candidate.event_name}) overlaps this series: "
-    headline = (f"{prefix}{scope} {label} is {movement}; "
-                f"{facts.relative_change * 100:+.1f}% vs that mean.")
-    impact = (f"Latest {facts.latest:,.1f} · trailing mean {facts.trailing_mean:,.1f} · "
-              f"absolute movement {facts.absolute_change:+,.1f}")
+        headline = headline[:-1] + (
+            f" during the registered {candidate.event_name} window; this is timing "
+            "overlap, not attribution."
+        )
     return headline, impact
 
 

@@ -1,6 +1,6 @@
 """Generate the deterministic, internally reconciled pharma demo dataset.
 
-The benchmark has two deliberately different source products:
+The benchmark has three deliberately different source products:
 
 * ``source_a`` is account-month grain and is the system of record for
   prescriptions, field effort, samples, programs, and writer activity.
@@ -8,6 +8,9 @@ The benchmark has two deliberately different source products:
   registered regional projection factor, a one-month lag, and an exact early
   history restatement.  It never pretends to have account or field-effort
   grain.
+* ``referral`` is an observed-only receiving-HCP/month relationship feed with
+  deterministic 80% account coverage.  Missing accounts are unknown, never
+  silently treated as zero or projected to full coverage.
 
 All random state is local to :func:`build_demo`.  Calling it repeatedly with
 the same seed returns byte-stable frames; no module-global RNG can leak state
@@ -51,9 +54,15 @@ COMPETITOR_START = "2026-04"
 COMPETITOR_SHOCK = -0.22
 
 RX_COLUMNS = ("trx_units", "trx_dollars", "trx_normalized", "nrx", "nbrx",
-              "market_trx")
+              "market_trx", "market_nrx", "il17_competitor_a_trx",
+              "il17_competitor_b_trx", "advanced_other_trx",
+              "il17_class_trx", "advanced_therapy_trx")
 PANEL_KEYS = ("month", "territory", "district", "region", "specialty",
               "payer_channel")
+
+REFERRAL_COVERAGE_TARGET = 0.80
+REFERRAL_SOURCE_SEED_OFFSET = 101
+RECENT_ADOPTER_MONTHS = 6
 
 
 def month_index(month: str) -> int:
@@ -80,6 +89,9 @@ def build_universe(rng: np.random.Generator) -> pd.DataFrame:
             first_idx = 0 if rng.random() < 0.72 else int(rng.integers(1, len(MONTHS)))
             rows.append({
                 "account_id": f"HCP{serial:04d}",
+                # Reserved synthetic-demo range.  These are deliberately not
+                # represented as real National Provider Identifiers.
+                "npi": f"9999{serial:06d}",
                 "name": f"Dr. Morgan {serial:03d}",
                 "territory": _territory(region, specialty, territory_number),
                 "district": f"{region} District {territory_number}",
@@ -147,6 +159,8 @@ def build_fact(universe: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame
     region_mult = {"North": 1.06, "South": 0.94, "East": 1.00, "West": 1.03}
     base_share = {"Primary Care": 0.086, "Cardiology": 0.112,
                   "Endocrinology": 0.101}
+    il17_share = {"Primary Care": 0.255, "Cardiology": 0.315,
+                  "Endocrinology": 0.285}
 
     for mi, month in enumerate(MONTHS):
         trend = 1.0 + 0.0035 * mi
@@ -171,6 +185,25 @@ def build_fact(universe: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame
             # interventions therefore move share rather than moving numerator
             # and denominator in lockstep.
             market_trx = potential / base_share[hcp["specialty"]]
+            market_nrx = market_trx * {
+                "Primary Care": 0.225, "Cardiology": 0.185,
+                "Endocrinology": 0.205,
+            }[hcp["specialty"]]
+            il17_class_trx = potential / il17_share[hcp["specialty"]]
+            non_brand_class_trx = max(il17_class_trx - trx, 0.0)
+            competitor_a = non_brand_class_trx * 0.56
+            competitor_b = non_brand_class_trx - competitor_a
+            advanced_other = max(market_trx - il17_class_trx, 0.0)
+            # Reconcile the persisted six-decimal member cells exactly. This
+            # avoids a one-micro-unit basket mismatch after CSV round-tripping.
+            trx_value = round(trx, 6)
+            competitor_a_value = round(competitor_a, 6)
+            competitor_b_value = round(competitor_b, 6)
+            advanced_other_value = round(advanced_other, 6)
+            il17_class_value = round(
+                trx_value + competitor_a_value + competitor_b_value, 6)
+            advanced_therapy_value = round(
+                il17_class_value + advanced_other_value, 6)
             normalized = trx * ({"Commercial": 1.0, "Medicare Part D": 0.98,
                                  "Medicaid": 0.95, "Cash": 1.02}[hcp["payer_channel"]])
 
@@ -186,23 +219,36 @@ def build_fact(universe: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame
 
             rows.append({
                 "account_id": hcp["account_id"],
+                "npi": hcp["npi"],
                 "month": month,
                 "territory": hcp["territory"],
                 "district": hcp["district"],
                 "region": hcp["region"],
                 "specialty": hcp["specialty"],
                 "payer_channel": hcp["payer_channel"],
-                "trx_units": round(trx, 6),
+                "trx_units": trx_value,
                 "trx_dollars": round(trx * float(hcp["price_per_trx"]), 6),
                 "trx_normalized": round(normalized, 6),
                 "nrx": round(max(0.0, nrx), 6),
                 "nbrx": round(max(0.0, nbrx), 6),
-                "market_trx": round(market_trx, 6),
+                "market_trx": advanced_therapy_value,
+                "market_nrx": round(market_nrx, 6),
+                "il17_competitor_a_trx": competitor_a_value,
+                "il17_competitor_b_trx": competitor_b_value,
+                "advanced_other_trx": advanced_other_value,
+                "il17_class_trx": il17_class_value,
+                "advanced_therapy_trx": advanced_therapy_value,
                 "calls": calls,
                 "call_plan": round(plan, 6),
                 "samples": samples,
                 "speaker_attendance": attendance,
-                "new_writers": int(started and mi == int(hcp["first_writer_idx"])),
+                # The first measured month has no prior observation and cannot
+                # distinguish incumbent from newly adopting writers. Preserve
+                # it as unknown instead of manufacturing a launch-sized spike.
+                "new_writers": (
+                    float("nan") if mi == 0
+                    else int(started and mi == int(hcp["first_writer_idx"]))
+                ),
                 **event_flags,
             })
     return pd.DataFrame(rows)
@@ -239,8 +285,20 @@ def build_accounts(source_a: pd.DataFrame, universe: pd.DataFrame) -> pd.DataFra
         by_month = group.set_index("month")
         activity = ((by_month["calls"] > 0) | (by_month["samples"] > 0)
                     | (by_month["speaker_attendance"] > 0))
+        positive_months = group.loc[group["trx_units"] > 0, "month"]
+        first_brand_month = str(positive_months.iloc[0]) if len(positive_months) else None
+        months_since_adoption = (
+            len(MONTHS) - 1 - MONTHS.index(first_brand_month)
+            if first_brand_month is not None else None
+        )
+        adoption_stage = (
+            "never_adopter" if first_brand_month is None else
+            "recent_adopter" if months_since_adoption < RECENT_ADOPTER_MONTHS else
+            "established"
+        )
         rows.append({
             "account_id": account_id,
+            "npi": static["npi"],
             "name": names[account_id],
             "territory": static["territory"],
             "district": static["district"],
@@ -249,16 +307,63 @@ def build_accounts(source_a: pd.DataFrame, universe: pd.DataFrame) -> pd.DataFra
             "payer_channel": static["payer_channel"],
             "trx_ttm": round(float(ttm["trx_units"].sum()), 3),
             "nrx_ttm": round(float(ttm["nrx"].sum()), 3),
+            "market_nrx_ttm": round(float(ttm["market_nrx"].sum()), 3),
+            "nrx_share_ttm": round(
+                float(ttm["nrx"].sum()) / float(ttm["market_nrx"].sum()), 8)
+                if float(ttm["market_nrx"].sum()) else float("nan"),
             "nbrx_ttm": round(float(ttm["nbrx"].sum()), 3),
             "months_since_rx": _months_since_last(by_month["trx_units"] > 0),
             "months_since_activity": _months_since_last(activity),
             "calls_90d": int(q90["calls"].sum()),
             "call_plan_90d": round(float(q90["call_plan"].sum()), 3),
+            "first_brand_month": first_brand_month,
+            "adoption_stage": adoption_stage,
         })
     accounts = pd.DataFrame(rows)
     accounts["decile"] = pd.qcut(accounts["trx_ttm"].rank(method="first"), 10,
                                   labels=False) + 1
     return accounts
+
+
+def build_referrals(source_a: pd.DataFrame, accounts: pd.DataFrame,
+                    seed: int = SEED) -> pd.DataFrame:
+    """Build an observed-only referral feed at receiving-HCP/month grain.
+
+    Exactly four of every five synthetic HCPs are covered, evenly distributed
+    across the stable account sequence.  A row exists for every covered
+    account-month, including observed zeroes.  Uncovered accounts have no row
+    and therefore remain unknown.  ``active_referrers`` is additive because a
+    synthetic referrer is assigned to only one receiving HCP in each month.
+    """
+    rng = np.random.default_rng(seed + REFERRAL_SOURCE_SEED_OFFSET)
+    covered_ids = set(
+        accounts.loc[
+            accounts["account_id"].str[-4:].astype(int).mod(5).ne(0),
+            "account_id",
+        ]
+    )
+    expected = int(round(len(accounts) * REFERRAL_COVERAGE_TARGET))
+    if len(covered_ids) != expected:
+        raise AssertionError(
+            f"referral coverage contract drifted: {len(covered_ids)} != {expected}")
+
+    covered = source_a[source_a["account_id"].isin(covered_ids)].copy()
+    referral_lambda = (
+        0.35 + covered["nrx"].astype(float) * 0.075
+        + covered["speaker_attendance"].astype(float) * 0.20
+    )
+    covered["referrals_in"] = rng.poisson(referral_lambda).astype(int)
+    # A referring HCP may send multiple patients.  The stable binomial draw
+    # yields a distinct-referrer count bounded by incoming referrals.
+    covered["active_referrers"] = [
+        max(1, int(rng.binomial(int(count), 0.72))) if count else 0
+        for count in covered["referrals_in"]
+    ]
+    columns = [
+        "account_id", "npi", "month", "territory", "district", "region",
+        "specialty", "payer_channel", "referrals_in", "active_referrers",
+    ]
+    return covered[columns].sort_values(["month", "account_id"]).reset_index(drop=True)
 
 
 def build_demo(seed: int = SEED) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -279,6 +384,7 @@ def _ground_truth(version: str) -> dict:
             "source_a": ["account_id", "month"],
             "source_b": list(PANEL_KEYS),
             "accounts": ["account_id"],
+            "referral": ["account_id", "month"],
         },
         "events": {
             "speaker_launch": {
@@ -315,6 +421,35 @@ def _ground_truth(version: str) -> dict:
             "restatement_factor": SOURCE_B_RESTATEMENT_FACTOR,
             "affected_columns": list(RX_COLUMNS),
         },
+        "referral_source": {
+            "coverage_target": REFERRAL_COVERAGE_TARGET,
+            "expected_accounts": 240,
+            "observed_accounts": 192,
+            "coverage_rate": 0.80,
+            "coverage_rule": "synthetic account sequence excludes every fifth HCP",
+            "zero_semantics": "zero is observed only for covered account-months",
+            "projection": "none; observed-only metrics",
+        },
+        "market_baskets": {
+            "il17_class": {
+                "members": ["brand", "competitor_a", "competitor_b"],
+                "denominator": "il17_class_trx",
+            },
+            "advanced_therapy": {
+                "members": ["brand", "competitor_a", "competitor_b",
+                            "advanced_other"],
+                "denominator": "advanced_therapy_trx",
+            },
+        },
+        "synthetic_identifiers": {
+            "npi": "10-digit demo identifier in reserved 9999xxxxxx pattern; not a real NPI",
+        },
+        "metric_coverage": {
+            "new_writers": {
+                "warmup_month": MONTHS[0],
+                "semantics": "undefined because no prior measured month exists",
+            },
+        },
         "variant_definitions": {
             "trx": {"units": "total prescriptions",
                     "dollars": "gross prescription value",
@@ -325,29 +460,37 @@ def _ground_truth(version: str) -> dict:
                                 "denominator": "call plan"},
         },
         "invariants": ["nbrx <= nrx <= trx_units", "market_trx >= trx_units",
+                       "market_nrx >= nrx",
+                       "advanced_therapy_trx >= il17_class_trx >= trx_units",
+                       "new_writers is undefined in the first measured month",
                        "one source_a row per account_id/month",
-                       "accounts are derived from source_a"],
+                       "accounts are derived from source_a",
+                       "referral source covers exactly 80% of HCPs and is not projected"],
     }
 
 
 def main() -> None:
     source_a, source_b, accounts = build_demo(SEED)
+    referral = build_referrals(source_a, accounts, SEED)
     source_a.to_csv(HERE / "fact_source_a.csv", index=False, encoding="utf-8",
                     lineterminator="\n")
     source_b.to_csv(HERE / "fact_source_b.csv", index=False, encoding="utf-8",
                     lineterminator="\n")
     accounts.to_csv(HERE / "accounts.csv", index=False, encoding="utf-8",
                     lineterminator="\n")
+    referral.to_csv(HERE / "fact_referral.csv", index=False, encoding="utf-8",
+                    lineterminator="\n")
 
     digest = hashlib.sha256()
-    for path in (HERE / "accounts.csv", HERE / "fact_source_a.csv",
-                 HERE / "fact_source_b.csv"):
+    for path in (HERE / "accounts.csv", HERE / "fact_referral.csv",
+                 HERE / "fact_source_a.csv", HERE / "fact_source_b.csv"):
         digest.update(path.read_bytes())
     version = digest.hexdigest()[:12]
     (HERE / "ground_truth.json").write_text(
-        json.dumps(_ground_truth(version), indent=2) + "\n", encoding="utf-8")
+        json.dumps(_ground_truth(version), indent=2) + "\n",
+        encoding="utf-8", newline="\n")
     print(f"data written; version={version}; rows a={len(source_a)} "
-          f"b={len(source_b)} accounts={len(accounts)}")
+          f"b={len(source_b)} referral={len(referral)} accounts={len(accounts)}")
 
 
 if __name__ == "__main__":

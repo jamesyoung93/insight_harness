@@ -11,10 +11,11 @@ def test_pharma_tile_catalog_is_immutable_registered_and_multi_class():
     assert [tile.id for tile in tiles.TILE_DEFINITIONS] == [
         "trx", "nrx", "nbrx", "trx_share", "calls", "call_attainment",
         "new_writers", "samples", "commercial_trx", "payer_mix", "whitespace_hcps",
+        "top_writers", "incoming_referrals", "active_referrers", "hcp_cohort",
     ]
     assert all(tile.metric in sl.METRICS for tile in tiles.TILE_DEFINITIONS)
     assert {tile.question_class for tile in tiles.TILE_DEFINITIONS} == {
-        triage.DESCRIPTIVE, triage.DIAGNOSTIC, triage.RETRIEVAL}
+        triage.DESCRIPTIVE, triage.DIAGNOSTIC, triage.RETRIEVAL, triage.COHORT}
     assert tiles.TILES_BY_ID["payer_mix"].breakdown_dimension == "payer_channel"
     assert tiles.TILES_BY_ID["whitespace_hcps"].retrieval_template == "whitespace"
     assert all(hash(tile) for tile in tiles.TILE_DEFINITIONS)
@@ -159,6 +160,13 @@ def test_cache_key_is_exact_spec_scope_governance_and_data_identity():
             scope={"region": "East"}, governance=governance, data_version="data-v1"),
     ]
     assert all(key != base for key in changed)
+
+
+def test_default_cache_governance_includes_market_basket_registry():
+    from harness import baskets
+
+    governance = tiles.governance_cache_key()
+    assert governance[-1] == baskets.registry_fingerprint()
 
 
 def test_filter_normalization_dedupes_behavior_equivalent_values():

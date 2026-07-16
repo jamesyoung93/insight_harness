@@ -31,15 +31,17 @@ BASIS_CONTROLS = MappingProxyType({
     "YoY": "yoy",
 })
 VIZ_KINDS = ("sparkline", "metric", "line", "table", "count")
-QUESTION_CLASSES = (triage.DESCRIPTIVE, triage.DIAGNOSTIC, triage.RETRIEVAL)
-RETRIEVAL_TEMPLATES = ("whitespace", "top_accounts")
+QUESTION_CLASSES = (
+    triage.DESCRIPTIVE, triage.DIAGNOSTIC, triage.RETRIEVAL, triage.COHORT,
+)
+RETRIEVAL_TEMPLATES = ("whitespace", "top_accounts", "top_writers")
 PERSONA_IDS = (
     "sales_rep", "district_manager", "brand_marketing", "market_access", "executive",
 )
 
 FilterValue = str | tuple[str, ...]
 FilterItems = tuple[tuple[str, FilterValue], ...]
-GovernanceKey = tuple[float, tuple[tuple[str, str], ...]]
+GovernanceKey = tuple[float, tuple[tuple[str, str], ...], str]
 _INHERIT = object()
 
 
@@ -233,6 +235,8 @@ def spec_errors(spec: SavedQuestionSpec) -> tuple[str, ...]:
             errors.append(f"invalid retrieval template: {spec.retrieval_template!r}")
     elif spec.retrieval_template is not None:
         errors.append(f"{spec.question_class} tiles cannot declare a retrieval template")
+    if spec.question_class == triage.COHORT and spec.metric != "nrx":
+        errors.append("cohort tiles must use the governed NRx-share selection recipe")
     return tuple(errors)
 
 
@@ -302,6 +306,16 @@ TILE_DEFINITIONS = (
     TileDefinition("whitespace_hcps", "Whitespace HCPs", "trx", viz_kind="count",
                    default_personas=("sales_rep", "district_manager"),
                    question_class=triage.RETRIEVAL, retrieval_template="whitespace"),
+    TileDefinition("top_writers", "Top writers", "nrx", viz_kind="table",
+                   default_personas=("district_manager", "brand_marketing"),
+                   question_class=triage.RETRIEVAL, retrieval_template="top_writers"),
+    TileDefinition("incoming_referrals", "Incoming referrals", "referrals_in",
+                   default_personas=("district_manager", "market_access")),
+    TileDefinition("active_referrers", "Active referrers", "active_referrers",
+                   default_personas=("district_manager", "market_access")),
+    TileDefinition("hcp_cohort", "Top HCP activity gaps", "nrx", viz_kind="table",
+                   default_personas=("brand_marketing", "executive"),
+                   question_class=triage.COHORT),
 )
 TILES_BY_ID = MappingProxyType({tile.id: tile for tile in TILE_DEFINITIONS})
 if len(TILES_BY_ID) != len(TILE_DEFINITIONS):
@@ -356,9 +370,10 @@ def materialize_spec(tile: TileDefinition | str, *, window: str | None = None,
         disclosures.append("Window and comparison controls do not apply to this retrieval tile.")
 
     metric = sl.METRICS[base.metric]
-    if base.question_class == triage.RETRIEVAL:
+    if base.question_class in (triage.RETRIEVAL, triage.COHORT):
         if source is not None or variant is not None:
-            disclosures.append("Source and sales-type controls do not apply to account retrieval.")
+            disclosures.append(
+                "Source and sales-type controls do not apply to this governed recipe.")
     else:
         if source is not None:
             if source in metric["sources"]:
@@ -461,7 +476,13 @@ def canonical_question_for_spec(spec: SavedQuestionSpec,
     if spec.question_class == triage.RETRIEVAL:
         if spec.retrieval_template == "whitespace":
             return f"List whitespace HCPs by {keyword} with no activity{where}"
+        if spec.retrieval_template == "top_writers":
+            return ("Top 15 HCP writers by trailing-12-month NRx share"
+                    f"{where}")
         return f"Top 15 accounts by {keyword}{where}"
+    if spec.question_class == triage.COHORT:
+        return ("Compare the activity mix of top 20 HCPs by NRx share with "
+                f"matched peers{where}")
 
     months = WINDOW_CONTROLS[spec.window]
     window = f" last {months} months" if months is not None else ""
@@ -498,6 +519,8 @@ def intent_for_spec(spec: SavedQuestionSpec,
         valid = valid and intent.dim_breakdown == spec.breakdown_dimension
     elif spec.question_class == triage.RETRIEVAL:
         valid = valid and intent.template == spec.retrieval_template
+    elif spec.question_class == triage.COHORT:
+        valid = valid and intent.metric == "nrx"
     if not valid:
         raise RuntimeError(f"saved question no longer round-trips: {question!r}")
     return intent
@@ -512,8 +535,15 @@ def intent_for(tile: TileDefinition | str, *, window: str | None = None,
 
 
 def governance_cache_key() -> GovernanceKey:
+    # Import lazily: tiles are imported from several view modules during a
+    # cold Streamlit start, while the semantic registry may still be entering
+    # sys.modules.  Basket governance belongs in the cache key, but importing
+    # the validating basket registry at module load would create a partial-
+    # initialization cycle (tiles -> baskets -> semantic_layer).
+    from . import baskets
+
     variants = tuple((metric, sl.default_variant(metric)) for metric in sorted(sl.METRICS))
-    return sl.materiality(), variants
+    return sl.materiality(), variants, baskets.registry_fingerprint()
 
 
 class TileCacheKey(NamedTuple):
