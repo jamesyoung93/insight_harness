@@ -14,7 +14,8 @@ def _raw(**overrides):
     payload = {
         "question_class": "Descriptive", "metric": "trx", "filters": {},
         "trend": False, "dim_breakdown": None, "event_id": None,
-        "template": None, "window": None, "compare_basis": None, "reason": "",
+        "template": None, "window": None, "compare_basis": None,
+        "basket_id": None, "reason": "",
     }
     payload.update(overrides)
     return json.dumps(payload)
@@ -297,6 +298,25 @@ def test_llm_filters_and_windows_are_registry_validated():
     assert intent.window.months == ["2026-01", "2026-02", "2026-03"]
     with pytest.raises(TranslationError):
         _validate("q", _raw(filters={"region": "Atlantis"}))
+
+
+def test_llm_cohort_and_explicit_basket_contracts_are_registry_validated():
+    cohort_intent, _ = _validate(
+        "Compare top HCPs by NRx share with matched peers",
+        _raw(question_class="Cohort comparison", metric="nrx"),
+    )
+    assert cohort_intent.question_class == triage.COHORT
+    assert cohort_intent.metric == "nrx"
+
+    basket_intent, _ = _validate(
+        "What is TRx share in the IL-17 class?",
+        _raw(metric="trx_share", basket_id="il17_class"),
+    )
+    assert basket_intent.basket_id == "il17_class"
+    with pytest.raises(TranslationError):
+        _validate("q", _raw(metric="trx", basket_id="il17_class"))
+    with pytest.raises(TranslationError):
+        _validate("q", _raw(metric="trx_share", basket_id="invented"))
 
 
 def test_governance_write_is_atomic_and_audits_actor_before_after():

@@ -4,6 +4,7 @@ presentation. Every page renders answers through render_answer()."""
 from __future__ import annotations
 
 import html
+import math
 import re
 
 import altair as alt
@@ -266,6 +267,11 @@ def hero_figure_content(art) -> tuple[str, str, str]:
     elif art.engine == "retrieval":
         value = f"{len(art.table):,} records" if art.table is not None else "Result set"
         body = art.headline
+    elif art.engine == "cohort":
+        matched = int(art.extras.get("matched_count", 0))
+        value = f"{matched:,} matched pairs"
+        label = f"Top NRx-share HCP cohort · {scope} · governed R3M activity profile"
+        body = art.headline
     elif art.engine == "decomposition" and resolution is not None:
         value = format_native_delta(resolution.metric, resolution.variant, art.value)
         body = art.headline
@@ -332,9 +338,39 @@ def render_stamp(art) -> None:
 # --------------------------------------------------------------------------- #
 # Charts
 # --------------------------------------------------------------------------- #
-def line_chart(chart_df: pd.DataFrame) -> None:
+def visible_y_domain(chart_df: pd.DataFrame | None, *,
+                     padding_ratio: float = 0.08) -> list[float] | None:
+    """Return a padded y-domain containing every finite visible series value.
+
+    An explicit non-zero domain keeps small but meaningful movement legible in
+    both compact tiles and expanded Ask answers.  The padding also handles a
+    constant series without clipping zero, negative, or ratio-valued data.
+    """
+
+    if chart_df is None or chart_df.empty:
+        return None
+    columns = [column for column in chart_df.columns if column != "month"]
+    if not columns:
+        return None
+    numeric = chart_df[columns].apply(pd.to_numeric, errors="coerce")
+    values = [float(value) for value in numeric.to_numpy().ravel()
+              if pd.notna(value) and math.isfinite(float(value))]
+    if not values:
+        return None
+    low, high = min(values), max(values)
+    if math.isclose(low, high, rel_tol=0.0, abs_tol=0.0):
+        pad = abs(low) * padding_ratio if low else 1.0
+    else:
+        pad = max((high - low) * padding_ratio,
+                  max(abs(low), abs(high), 1.0) * 1e-9)
+    return [low - pad, high + pad]
+
+
+def _line_chart_spec(chart_df: pd.DataFrame) -> alt.Chart:
+    """Build the governed answer chart separately for visual-contract tests."""
+
     series = [c for c in chart_df.columns if c != "month"]
-    long = chart_df.melt("month", var_name="series", value_name="value")
+    long = chart_df.melt("month", var_name="series", value_name="value").dropna()
     color = alt.Color("series:N",
                       scale=alt.Scale(domain=series, range=[C_PRIMARY, C_REFERENCE][:len(series)]),
                       legend=None if len(series) == 1 else alt.Legend(orient="top", title=None))
@@ -342,16 +378,25 @@ def line_chart(chart_df: pd.DataFrame) -> None:
         "series:N", legend=None,
         scale=alt.Scale(domain=series, range=[[1, 0], [6, 4]][:len(series)]),
     ) if len(series) > 1 else alt.value([1, 0])
-    st.altair_chart(
-        alt.Chart(long).mark_line(point=True, strokeWidth=2).encode(
-            x=alt.X("month:O", title=None), y=alt.Y("value:Q", title=None), color=color,
-            strokeDash=dash,
-            tooltip=[alt.Tooltip("month:O"), alt.Tooltip("series:N"),
-                     alt.Tooltip("value:Q", format=",.1f")],
-        ).properties(
-            height=260,
-            description="Monthly current and comparison series; the comparison line is dashed.",
-        ), width="stretch")
+    return alt.Chart(long).mark_line(point=False, strokeWidth=2).encode(
+        x=alt.X("month:O", title=None),
+        y=alt.Y(
+            "value:Q", title=None,
+            scale=alt.Scale(
+                domain=visible_y_domain(chart_df), zero=False, nice=False)),
+        color=color,
+        strokeDash=dash,
+        tooltip=[alt.Tooltip("month:O"), alt.Tooltip("series:N"),
+                 alt.Tooltip("value:Q", format=",.1f")],
+    ).properties(
+        height=260,
+        description=("Monthly current and comparison series on an explicit visible-data "
+                     "domain; the comparison line is dashed."),
+    )
+
+
+def line_chart(chart_df: pd.DataFrame) -> None:
+    st.altair_chart(_line_chart_spec(chart_df), width="stretch")
 
 
 def waterfall(t: pd.DataFrame, m0: str, m1: str) -> alt.Chart:
@@ -502,6 +547,77 @@ def _causal_brief(art, key: str) -> None:
                     "administrator token on the Semantic Layer page to review this result.")
 
 
+def _cohort_body(art, key: str) -> None:
+    """Render mixed-unit cohort gaps as independent-scale grouped small multiples."""
+
+    chart = art.chart_df
+    if chart is not None and not chart.empty and {
+            "label", "cohort", "value"}.issubset(chart.columns):
+        plot = chart.copy()
+        plot["cohort"] = plot["cohort"].map({
+            "top_hcps": "Top HCPs", "matched_peers": "Matched peers",
+        }).fillna(plot["cohort"])
+        plot["display"] = [
+            f"{float(row.value):.1%}" if row.value_format == "percent"
+            else f"{float(row.value):,.1f}"
+            for row in plot.itertuples()
+        ]
+        bars = alt.Chart(plot).mark_bar(cornerRadiusTopLeft=3,
+                                        cornerRadiusTopRight=3).encode(
+            x=alt.X("cohort:N", title=None, axis=alt.Axis(labelAngle=0)),
+            y=alt.Y("value:Q", title=None, scale=alt.Scale(zero=True)),
+            color=alt.Color(
+                "cohort:N", title=None,
+                scale=alt.Scale(domain=["Top HCPs", "Matched peers"],
+                                range=[C_PRIMARY, C_REFERENCE]),
+                legend=alt.Legend(orient="top"),
+            ),
+            tooltip=[alt.Tooltip("label:N", title="Activity"),
+                     alt.Tooltip("cohort:N", title="Cohort"),
+                     alt.Tooltip("display:N", title="Value")],
+        ).properties(width=210, height=150)
+        st.altair_chart(
+            bars.facet(
+                facet=alt.Facet("label:N", title=None,
+                                header=alt.Header(labelFontSize=11, labelLimit=220)),
+                columns=2,
+            ).resolve_scale(y="independent"),
+            width="stretch",
+        )
+
+    if art.table is not None:
+        display = art.table.copy()
+        for column in ("top_hcps", "matched_peers", "absolute_gap"):
+            if column in display:
+                display[column] = [
+                    f"{float(value):.1%}" if row_format == "percent"
+                    else f"{float(value):,.1f}"
+                    for value, row_format in zip(display[column], display["value_format"])
+                ]
+        if "relative_gap" in display:
+            display["relative_gap"] = display["relative_gap"].map(
+                lambda value: "—" if pd.isna(value) else f"{float(value):+.1%}")
+        st.dataframe(display, width="stretch", hide_index=True)
+
+    selection = art.extras.get("selection")
+    matches = art.extras.get("peer_matches")
+    if isinstance(selection, pd.DataFrame):
+        with st.expander("Selected top HCPs and governed floors"):
+            st.dataframe(selection, width="stretch", hide_index=True)
+    if isinstance(matches, pd.DataFrame):
+        with st.expander("Deterministic peer matches"):
+            st.dataframe(matches, width="stretch", hide_index=True)
+    st.button(
+        "Design a causal follow-up",
+        key=f"{key}_causal_followup",
+        on_click=goto,
+        args=("Causal Studio",),
+        kwargs={"studio_metric": "nrx"},
+        help=("Open Causal Studio to register or select an event-based design. "
+              "The cohort gap itself remains correlational."),
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Cross-cutting blocks: divergence, caveats, provenance, actions
 # --------------------------------------------------------------------------- #
@@ -543,13 +659,13 @@ def _provenance_block(art) -> None:
         st.code(art.code, language="python")
 
 
-def _actions_row(art, key: str) -> None:
+def _actions_row(art, key: str, *, allow_expand: bool = True) -> None:
     slug = art.question_class.lower().replace(" ", "_")
     # Keep the receipt controls usable in the narrow main pane created by an
     # open sidebar.  A trailing spacer made every real control collapse and
     # wrap vertically; export gets the dominant share instead.
-    c1, c2, c3, c4 = st.columns(
-        [3.5, 1.0, 1.0, 1.0], gap=None, vertical_alignment="center")
+    c1, c2, c3, c4, c5 = st.columns(
+        [3.0, 1.0, 1.0, 1.0, 1.2], gap=None, vertical_alignment="center")
     with c1:
         # ``key`` was added to st.popover after our supported Streamlit 1.50
         # floor.  The surrounding answer controls already carry hash-derived
@@ -598,6 +714,12 @@ def _actions_row(art, key: str) -> None:
                          else "Already on the watchlist.")
             except ValueError as exc:
                 st.toast(str(exc))
+    expandable = (art.chart_df is not None or art.table is not None
+                  or art.engine in {"causal_advisor", "decomposition", "cohort"})
+    if allow_expand and expandable:
+        if c5.button("Expand", key=f"{key}_expand",
+                     help="Open the complete artifact in a large dialog."):
+            show_answer_dialog(art, key)
 
 
 def _refusal(art, key: str) -> None:
@@ -617,7 +739,7 @@ def _refusal(art, key: str) -> None:
 # --------------------------------------------------------------------------- #
 # The single answer renderer
 # --------------------------------------------------------------------------- #
-def render_answer(art, key: str = "ans") -> None:
+def render_answer(art, key: str = "ans", *, allow_expand: bool = True) -> None:
     key = f"{key}_{art.result_hash}"
     with st.container(border=True):
         value, label, body = hero_figure_content(art)
@@ -625,13 +747,15 @@ def render_answer(art, key: str = "ans") -> None:
 
         if art.tier == TIER_ABSTAINED:
             _refusal(art, key)
-            _actions_row(art, key)
+            _actions_row(art, key, allow_expand=allow_expand)
             return
 
         if art.engine == "causal_advisor":
             _causal_brief(art, key)
         elif art.engine == "decomposition":
             _decomposition_body(art, key)
+        elif art.engine == "cohort":
+            _cohort_body(art, key)
         else:
             if art.chart_df is not None:
                 line_chart(art.chart_df)
@@ -643,4 +767,11 @@ def render_answer(art, key: str = "ans") -> None:
         _caveats_block(art)
         _provenance_block(art)
         render_stamp(art)
-        _actions_row(art, key)
+        _actions_row(art, key, allow_expand=allow_expand)
+
+
+@st.dialog("Explore governed answer", width="large")
+def show_answer_dialog(art, key: str = "answer_dialog") -> None:
+    """Render the canonical artifact at full width without a recursive expand action."""
+
+    render_answer(art, key=f"{key}_dialog", allow_expand=False)

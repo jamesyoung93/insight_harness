@@ -25,7 +25,8 @@ PRIMARY_KEYWORD = {"trx": "TRx", "nrx": "NRx",
                    "calls": "details", "call_plan": "call plan",
                    "call_attainment": "call-plan attainment",
                    "samples": "samples", "speaker_attendance": "speaker attendance",
-                   "new_writers": "new writers"}
+                   "new_writers": "new writers", "referrals_in": "incoming referrals",
+                   "active_referrers": "active referrers"}
 
 
 def breakdown_question(metric: str, filters: dict, window_n: int | None = None,
@@ -212,7 +213,7 @@ def check_divergence(art: AnswerArtifact, intent) -> None:
 # --------------------------------------------------------------------------- #
 # Caveats: built from registry metadata, never from model musing
 # --------------------------------------------------------------------------- #
-def build_caveats(art: AnswerArtifact) -> None:
+def build_caveats(art: AnswerArtifact, filters: dict | None = None) -> None:
     res = art.resolution
     if res is None:
         return
@@ -220,7 +221,20 @@ def build_caveats(art: AnswerArtifact) -> None:
     # Registered limitations are authoritative. Dropping a limitation by list
     # position can hide the exact pathology relevant to an older time window.
     art.caveats.extend(src["notes"] if src["kind"] == "panel-projected" else [])
+    completeness = sl.source_completeness(res.source, filters)
+    if completeness is not None:
+        coverage = completeness["coverage"]
+        coverage_text = f"{coverage:.1%}" if pd.notna(coverage) else "undefined"
+        art.caveats.extend(src["notes"])
+        art.caveats.append(
+            f"Computed scope completeness: {completeness['observed']}/"
+            f"{completeness['expected']} eligible HCPs ({coverage_text}). "
+            "Values are observed-only and are not projected; uncovered HCPs "
+            "are unknown, not zero."
+        )
+        art.extras["source_completeness"] = completeness
     variants = sl.METRICS[res.metric]["variants"]
+    art.caveats.extend(sl.METRICS[res.metric].get("coverage_notes", []))
     if len(variants) > 1:
         others = [v["label"] for k, v in variants.items() if k != res.variant]
         art.caveats.append(f"Named variants exist for this metric ({', '.join(others)}); "
@@ -313,13 +327,191 @@ def watch_feed(watches: list, z_threshold: float = 2.0) -> pd.DataFrame:
 # --------------------------------------------------------------------------- #
 # Monitoring: impact-ranked anomaly feed (materiality filter, not p-value spam)
 # --------------------------------------------------------------------------- #
+PRIORITY_SCORE_VERSION = "v2"
+PRIORITY_SCORE_WEIGHTS = {"standardized": 0.45, "relative": 0.20, "business_scale": 0.35}
+PRIORITY_Z_SATURATION = 4.0
+PRIORITY_RELATIVE_SATURATION = 0.50
+PRIORITY_SCALE_SATURATION = 0.10
+LOW_BASE_TRAILING_MEAN = 5.0
+LOW_BASE_RATIO_DENOMINATOR = 25.0
+ANOMALY_CLUSTER_OVERLAP = 0.80
+PRIORITY_SCORE_FORMULA = (
+    "0.45 × min(|z| / 4, 1) + 0.20 × min(|relative movement| / 50%, 1) "
+    "+ 0.35 × min((|business movement| / national monthly volume) / 10%, 1)"
+)
+
+# These are registered numerator/derived-metric relationships, not learned
+# correlations.  A movement in details and the corresponding attainment ratio
+# is one commercial story, so it is surfaced once with the derived view attached.
+CORRELATED_METRIC_GROUPS = (
+    frozenset({"calls", "call_attainment"}),
+)
+
+
+def priority_components_v2(*, z: float, relative_change: float,
+                           business_delta: float, national_monthly_volume: float,
+                           low_base: bool = False) -> dict[str, float | bool]:
+    """Return the bounded, disclosed components of priority score v2.
+
+    ``business_delta`` is a native-unit movement for additive metrics.  For a
+    ratio it is the implied numerator movement (ratio-point change multiplied
+    by the scoped denominator).  The scale reference is the corresponding
+    national monthly volume.  Relative and scale terms are deliberately zeroed
+    on low bases; a tiny count can still surface on standardized movement, but
+    a large percentage cannot make it look commercially large.
+    """
+
+    z_term = min(abs(float(z)) / PRIORITY_Z_SATURATION, 1.0)
+    relative_term = 0.0 if low_base else min(
+        abs(float(relative_change)) / PRIORITY_RELATIVE_SATURATION, 1.0)
+    reference = abs(float(national_monthly_volume))
+    scale_share = abs(float(business_delta)) / reference if reference else 0.0
+    scale_term = 0.0 if low_base else min(
+        scale_share / PRIORITY_SCALE_SATURATION, 1.0)
+    score = (
+        PRIORITY_SCORE_WEIGHTS["standardized"] * z_term
+        + PRIORITY_SCORE_WEIGHTS["relative"] * relative_term
+        + PRIORITY_SCORE_WEIGHTS["business_scale"] * scale_term
+    )
+    return {
+        "standardized": round(z_term, 8),
+        "relative": round(relative_term, 8),
+        "business_scale": round(scale_term, 8),
+        "business_scale_share": round(scale_share, 8),
+        "low_base_guard": bool(low_base),
+        "score": round(score, 8),
+    }
+
+
+def priority_score_v2(*, z: float, relative_change: float,
+                      business_delta: float, national_monthly_volume: float,
+                      low_base: bool = False) -> float:
+    """Convenience wrapper returning only the final [0, 1] priority score."""
+
+    return float(priority_components_v2(
+        z=z, relative_change=relative_change, business_delta=business_delta,
+        national_monthly_volume=national_monthly_volume, low_base=low_base,
+    )["score"])
+
+
+def _ratio_denominator(frame: pd.DataFrame, metric: str, variant: str,
+                       months: list[str]) -> float:
+    definition = sl.METRICS[metric]["variants"][variant]
+    denominator = definition.get("denominator")
+    if not denominator or denominator not in frame.columns:
+        return 0.0
+    selected = frame[frame["month"].isin(months)]
+    monthly = selected.groupby("month", sort=True)[denominator].sum()
+    return float(monthly.mean()) if len(monthly) else 0.0
+
+
+def _same_story_metrics(left: str, right: str) -> bool:
+    if left == right:
+        return True
+    return any(left in group and right in group for group in CORRELATED_METRIC_GROUPS)
+
+
+def _row_overlap(left: frozenset[str], right: frozenset[str]) -> float:
+    union = left | right
+    return len(left & right) / len(union) if union else 0.0
+
+
+def _same_signal_signature(left: dict, right: dict) -> bool:
+    """Catch the same aggregate movement projected through two dimensions.
+
+    Cross-dimensional scopes need not contain exactly the same accounts (an
+    account belongs to both a region and a payer channel), but two flags with
+    the same metric and identical latest/baseline/movement facts are still one
+    executive story.  Tight numeric tolerances keep this deterministic and
+    avoid grouping merely similar movements.
+    """
+
+    if left["metric_id"] != right["metric_id"]:
+        return False
+    return all(abs(float(left[key]) - float(right[key])) <= 1e-9 for key in (
+        "latest", "trailing_mean", "native_delta", "z"))
+
+
+def _cluster_anomaly_rows(rows: list[dict]) -> list[dict]:
+    """Collapse duplicate scopes and registered derived-metric pairs.
+
+    Clustering is a deterministic connected-components pass over the actual
+    account sets behind each flag.  Only identical metrics or explicitly
+    registered metric relationships can connect, preventing coincident
+    movements in unrelated measures from being merged into one story.
+    """
+
+    if not rows:
+        return []
+    parents = list(range(len(rows)))
+
+    def find(index: int) -> int:
+        while parents[index] != index:
+            parents[index] = parents[parents[index]]
+            index = parents[index]
+        return index
+
+    def union(left: int, right: int) -> None:
+        a, b = find(left), find(right)
+        if a != b:
+            parents[max(a, b)] = min(a, b)
+
+    for left in range(len(rows)):
+        for right in range(left + 1, len(rows)):
+            if not _same_story_metrics(rows[left]["metric_id"], rows[right]["metric_id"]):
+                continue
+            if (_row_overlap(rows[left]["_row_ids"], rows[right]["_row_ids"])
+                    >= ANOMALY_CLUSTER_OVERLAP
+                    or _same_signal_signature(rows[left], rows[right])):
+                union(left, right)
+
+    groups: dict[int, list[int]] = {}
+    for index in range(len(rows)):
+        groups.setdefault(find(index), []).append(index)
+
+    clustered: list[dict] = []
+    for indices in groups.values():
+        calls = [index for index in indices if rows[index]["metric_id"] == "calls"]
+        eligible = calls or indices  # details lead their derived attainment story
+        representative_index = sorted(
+            eligible,
+            key=lambda index: (-rows[index]["impact_score"], -abs(rows[index]["z"]),
+                               rows[index]["metric_id"], rows[index]["scope"]),
+        )[0]
+        representative = dict(rows[representative_index])
+        related = [rows[index] for index in sorted(
+            indices,
+            key=lambda index: (rows[index]["metric"], rows[index]["scope"],
+                               rows[index]["metric_id"]),
+        ) if index != representative_index]
+        representative["cluster_size"] = len(indices)
+        representative["also_visible_as"] = tuple(
+            f"{row['metric']} · {row['scope']}" for row in related)
+        representative["related_signals"] = tuple({
+            key: row[key] for key in (
+                "metric", "metric_id", "scope", "latest", "trailing_mean",
+                "native_delta", "relative_change", "z", "value_format",
+            )
+        } for row in related)
+        cluster_members = sorted(
+            f"{rows[index]['metric_id']}|{rows[index]['scope']}" for index in indices)
+        representative["cluster_id"] = hashlib.sha256(
+            "||".join(cluster_members).encode("utf-8")).hexdigest()[:12]
+        representative.pop("_row_ids", None)
+        clustered.append(representative)
+    return sorted(clustered, key=lambda row: (
+        -row["impact_score"], -abs(row["z"]), row["metric_id"], row["scope"]))
+
+
 def anomaly_feed(z_threshold: float = 2.0) -> pd.DataFrame:
     rows = []
-    df = sl.load_fact("source_a")
-    latest = sorted(df["month"].unique())[-1]
     metrics = ("trx", "nrx", "nbrx", "trx_share", "calls", "call_plan",
-               "call_attainment", "samples", "speaker_attendance", "new_writers")
+               "call_attainment", "samples", "speaker_attendance", "new_writers",
+               "referrals_in", "active_referrers")
     for metric in metrics:
+        source = sl.METRICS[metric]["default_source"]
+        df = sl.load_fact(source)
+        latest = sorted(df["month"].unique())[-1]
         variant = sl.default_variant(metric)
         for dim in ("region", "specialty", "payer_channel"):
             for val in sorted(df[dim].unique()):
@@ -335,25 +527,71 @@ def anomaly_feed(z_threshold: float = 2.0) -> pd.DataFrame:
                     trailing_mean = float(mu)
                     native_delta = latest_value - trailing_mean
                     relative_change = native_delta / abs(trailing_mean) if trailing_mean else 0.0
-                    # Same bounded cross-metric contract as the executive digest:
-                    # 65% standardized movement, 35% relative movement.
-                    impact_score = (0.65 * min(abs(float(z)) / 4.0, 1.0)
-                                    + 0.35 * min(abs(relative_change) / 0.50, 1.0))
                     value_format = sl.METRICS[metric]["variants"][variant].get(
                         "format", "number")
+                    history_months = [str(month) for month in s.index[-7:-1]]
+                    metric_kind = sl.METRICS[metric].get("kind")
+                    if metric_kind == "ratio":
+                        scoped_denominator = _ratio_denominator(
+                            scoped, metric, variant, history_months)
+                        national_volume = _ratio_denominator(
+                            df, metric, variant, history_months)
+                        business_delta = abs(native_delta) * abs(scoped_denominator)
+                        low_base = scoped_denominator < LOW_BASE_RATIO_DENOMINATOR
+                        low_base_reason = (
+                            f"trailing denominator {scoped_denominator:,.1f} is below "
+                            f"{LOW_BASE_RATIO_DENOMINATOR:,.0f}"
+                            if low_base else ""
+                        )
+                    else:
+                        national_series = sl.monthly_metric(df, metric, variant).dropna()
+                        national_history = national_series[
+                            national_series.index.astype(str).isin(history_months)]
+                        national_volume = float(national_history.mean()) \
+                            if len(national_history) else 0.0
+                        business_delta = abs(native_delta)
+                        low_base = value_format == "number" and \
+                            abs(trailing_mean) < LOW_BASE_TRAILING_MEAN
+                        low_base_reason = (
+                            f"trailing mean {trailing_mean:,.1f} is below "
+                            f"{LOW_BASE_TRAILING_MEAN:,.0f}"
+                            if low_base else ""
+                        )
+                    components = priority_components_v2(
+                        z=float(z), relative_change=relative_change,
+                        business_delta=business_delta,
+                        national_monthly_volume=national_volume,
+                        low_base=low_base,
+                    )
+                    history_values = [float(value) for value in hist]
+                    row_ids = frozenset(
+                        str(value) for value in (
+                            scoped["account_id"].dropna().unique()
+                            if "account_id" in scoped.columns else scoped.index
+                        )
+                    )
                     rows.append({"month": latest, "metric": sl.METRICS[metric]["label"],
                                  "scope": f"{dim}={val}", "latest": latest_value,
                                  "trailing_mean": trailing_mean, "z": round(float(z), 2),
                                  "impact": abs(native_delta),
                                  "native_delta": native_delta,
                                  "relative_change": relative_change,
-                                 "impact_score": round(impact_score, 8),
+                                 "impact_score": components["score"],
+                                 "priority_version": PRIORITY_SCORE_VERSION,
+                                 "priority_components": components,
+                                 "business_delta": business_delta,
+                                 "national_monthly_volume": national_volume,
+                                 "low_base": low_base,
+                                 "low_base_reason": low_base_reason,
+                                 "typical_min": min(history_values),
+                                 "typical_max": max(history_values),
                                  "value_format": value_format,
                                  "direction": "up" if native_delta > 0 else
                                               "down" if native_delta < 0 else "flat",
                                  "status": "flagged",
-                                 "metric_id": metric, "dim": dim, "value": val})
-    out = pd.DataFrame(rows)
+                                 "metric_id": metric, "dim": dim, "value": val,
+                                 "_row_ids": row_ids})
+    out = pd.DataFrame(_cluster_anomaly_rows(rows))
     return out.sort_values(["impact_score", "z"], ascending=[False, False]) \
         .reset_index(drop=True) if len(out) else out
 

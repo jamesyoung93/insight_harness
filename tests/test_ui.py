@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from harness import pipeline, profiles, runtime_policy, saved_insights, services, tiles
+from harness import pipeline, profiles, runtime_policy, saved_insights, services, tiles, triage
 from harness import semantic_layer as sl
 from harness.provenance import TIER_ABSTAINED
 
@@ -79,10 +79,19 @@ def test_home_starts_with_live_persona_kpis_and_hierarchy_scope_control():
     at = app().run()
     persona = profiles.PERSONAS_BY_ID["executive"]
     values = {metric.label: metric.value for metric in at.metric}
-    expected = {tiles.TILES_BY_ID[tile_id].label for tile_id in persona.default_tile_ids}
+    expected = {
+        tiles.TILES_BY_ID[tile_id].label for tile_id in persona.default_tile_ids
+        if tiles.TILES_BY_ID[tile_id].viz_kind != "table" and tile_id != "trx_share"
+    }
 
     assert expected <= set(values)
     assert all(values[label] not in (None, "", "—") for label in expected)
+    share_labels = [label for label in values
+                    if label.startswith("TRx market share")
+                    and "advanced-therapy market" in label]
+    assert len(share_labels) == 1
+    assert values[share_labels[0]] not in (None, "", "—")
+    assert "Top HCP activity gaps" in rendered_text(at)
     assert at.selectbox(key="home_persona").value == persona.id
     assert at.radio(key="home_window").value == persona.default_window
     assert at.radio(key="home_basis").value == persona.default_basis
@@ -159,9 +168,11 @@ def test_every_default_kpi_has_named_watch_download_open_and_breakdown_actions()
 
     for tile_id in persona.default_tile_ids:
         label = tiles.TILES_BY_ID[tile_id].label
-        assert f"tile_{tile_id}_watch" in button_keys
         assert f"tile_{tile_id}_open" in button_keys
-        assert f"tile_{tile_id}_breakdown" in button_keys
+        assert f"tile_{tile_id}_expand" in button_keys
+        if tiles.TILES_BY_ID[tile_id].question_class != triage.COHORT:
+            assert f"tile_{tile_id}_watch" in button_keys
+            assert f"tile_{tile_id}_breakdown" in button_keys
         assert downloads[f"tile_{tile_id}_download"] == f"Download {label} JSON"
 
 
@@ -171,7 +182,12 @@ def test_incompatible_global_overrides_disclose_fallbacks_without_crashing_tiles
     at.selectbox(key="home_variant").set_value("dollars").run()
 
     assert not at.exception
-    assert len(at.metric) == len(profiles.PERSONAS_BY_ID["executive"].default_tile_ids)
+    executive = profiles.PERSONAS_BY_ID["executive"]
+    expected_metrics = sum(
+        tiles.TILES_BY_ID[tile_id].viz_kind != "table"
+        for tile_id in executive.default_tile_ids)
+    assert len(at.metric) == expected_metrics
+    assert "Top HCP activity gaps" in rendered_text(at)
     assert "Override note:" in rendered_text(at)
 
 

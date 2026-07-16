@@ -29,7 +29,7 @@ jobs:
       - name: Verify generated benchmark is reproducible
         run: |
           python data/generate_demo_data.py
-          git diff --exit-code -- data/accounts.csv data/fact_source_a.csv data/fact_source_b.csv data/ground_truth.json
+          git diff --exit-code -- data/accounts.csv data/fact_source_a.csv data/fact_source_b.csv data/fact_referral.csv data/ground_truth.json
       - name: Compile
         run: python -m compileall -q app.py harness views tests
       - name: Test

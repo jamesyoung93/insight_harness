@@ -7,13 +7,50 @@ import hashlib
 from dataclasses import replace
 from typing import Mapping
 
+import altair as alt
 import streamlit as st
 
 from harness import digest as digest_service
 from harness import (digest_narrator, profiles, runtime_policy, saved_insights,
-                     semantic_layer as sl, triage)
+                     semantic_layer as sl, services, triage)
 from harness.digest_store import DigestHistoryStore, InMemoryDigestHistoryStore
 from views import common
+
+
+def _sparkline_chart(item) -> alt.Chart | None:
+    """Twelve-point trend with only the flagged month marked."""
+
+    frame = item.candidate.artifact.chart_df
+    if frame is None or frame.empty or "month" not in frame.columns:
+        return None
+    series = next((column for column in frame.columns if column != "month"), None)
+    if series is None:
+        return None
+    plot = frame[["month", series]].dropna().tail(12).rename(
+        columns={series: "value"}).copy()
+    if plot.empty:
+        return None
+    plot["month"] = plot["month"].astype(str)
+    latest = plot.tail(1)
+    base = alt.Chart(plot).encode(
+        x=alt.X("month:O", axis=None, sort=None),
+        y=alt.Y("value:Q", axis=None, scale=alt.Scale(zero=False)),
+        tooltip=[alt.Tooltip("month:O", title="Month"),
+                 alt.Tooltip("value:Q", title=series, format=",.2f")],
+    )
+    line = base.mark_line(color=common.C_PRIMARY, strokeWidth=2)
+    marker = alt.Chart(latest).mark_circle(
+        color=common.C_PRIMARY, size=70, stroke="white", strokeWidth=1.5,
+    ).encode(
+        x=alt.X("month:O", axis=None, sort=None),
+        y=alt.Y("value:Q", axis=None, scale=alt.Scale(zero=False)),
+        tooltip=[alt.Tooltip("month:O", title="Flagged month"),
+                 alt.Tooltip("value:Q", title=series, format=",.2f")],
+    )
+    return alt.layer(line, marker).properties(
+        height=86,
+        description="Twelve-month digest sparkline; the flagged latest month is marked.",
+    )
 
 
 def _resolved_context(persona: str | None, scope: Mapping | None) -> tuple[str, dict]:
@@ -110,14 +147,77 @@ def _descriptive_watch_inputs(insights) -> tuple[list[dict], int]:
     } for insight in eligible], skipped)
 
 
+def _render_why(rendered) -> None:
+    candidate = rendered.candidate
+    score_label = "Definition-fork impact" if candidate.kind == "divergence" \
+        else "Priority score v2"
+    st.markdown(
+        f"- **{score_label}:** {candidate.impact_score:.3f}\n"
+        f"- **Novelty factor:** {rendered.novelty_factor:.3f}\n"
+        f"- **Ranking score:** {rendered.score:.3f}\n"
+        f"- **Ranking method:** {rendered.ranking_method['description']}\n"
+        f"- **Metric family:** {candidate.family}\n"
+        f"- **Resolution:** {candidate.artifact.resolution.reason}"
+    )
+    if candidate.facts and candidate.kind != "divergence":
+        facts = candidate.facts
+        st.caption(
+            f"Standardized movement: {abs(facts.z):.2f}σ · bounded components: "
+            f"standardized {facts.standardized_term:.3f}, relative "
+            f"{facts.relative_term:.3f}, business scale "
+            f"{facts.business_scale_term:.3f}."
+        )
+        st.caption(f"Formula: {services.PRIORITY_SCORE_FORMULA}")
+        if facts.low_base:
+            st.caption(
+                f"Low-base guard active ({facts.low_base_reason}); relative and "
+                "business-scale terms were suppressed."
+            )
+    if candidate.event_name:
+        st.caption(f"Registered event flag: {candidate.event_name}. This is context, "
+                   "not a causal attribution.")
+    if candidate.fork_label:
+        st.caption(f"Material alternate: {candidate.fork_label}.")
+    context = rendered.fact_payload()["drillthrough_context"]
+    if context["window"] or context["basis"]:
+        st.caption(
+            "Saved window/comparison controls are preserved for breakdown navigation "
+            "only; they do not alter the standardized ranking computation."
+        )
+
+
+@st.dialog("Explore digest signal", width="large")
+def show_digest_dialog(rendered) -> None:
+    """Expand a digest story through the canonical full artifact renderer."""
+
+    st.markdown(common.chip(rendered.category_label), unsafe_allow_html=True)
+    st.subheader(rendered.headline)
+    st.caption(rendered.impact_text)
+    common.render_answer(
+        rendered.candidate.artifact,
+        key=f"digest_dialog_{rendered.result_hash}",
+        allow_expand=False,
+    )
+    with st.expander("Why this surfaced", expanded=True):
+        _render_why(rendered)
+    st.caption(
+        f"Evidence stamp · fact hash: `{rendered.fact_hash}` · presentation hash: "
+        f"`{rendered.presentation_hash}`"
+    )
+
+
 def _render_item(rendered, index: int) -> None:
     candidate = rendered.candidate
+    expand = False
     with st.container(border=True):
         st.markdown(common.chip(candidate.artifact.tier)
-                    + f"&nbsp; **{candidate.kind.title()} signal**",
+                    + f"&nbsp; {common.chip(rendered.category_label)}",
                     unsafe_allow_html=True)
         st.subheader(rendered.headline)
         st.caption(rendered.impact_text)
+        sparkline = _sparkline_chart(rendered)
+        if sparkline is not None:
+            st.altair_chart(sparkline, width="stretch")
         narration = rendered.narration
         if narration.get("narrator") == "language_model":
             latency = f" · {narration['latency_ms']} ms" \
@@ -131,7 +231,7 @@ def _render_item(rendered, index: int) -> None:
                 st.caption("Templated phrasing retained because the optional rewrite was not "
                            "validated.")
 
-        action1, action2, action3 = st.columns([1.3, 1.2, 1.4])
+        action1, action2, action3 = st.columns([1.3, 1.2, 1.0])
         action1.button("Break this down", key=f"digest_break_{index}_{rendered.result_hash}",
                        on_click=_queue_breakdown, args=(rendered,),
                        width="stretch")
@@ -140,39 +240,30 @@ def _render_item(rendered, index: int) -> None:
             file_name=f"digest_item_{rendered.presentation_hash}.json",
             key=f"digest_download_{index}_{rendered.result_hash}",
         )
-        action3.code(rendered.fact_hash, language=None)
+        expand = action3.button(
+            "Expand", key=f"digest_expand_{index}_{rendered.result_hash}",
+            width="stretch", help="Open the complete governed artifact and full-size chart.")
+        st.caption(
+            f"Evidence stamp · fact hash: `{rendered.fact_hash}` · presentation hash: "
+            f"`{rendered.presentation_hash}` · answer hash: "
+            f"`{candidate.artifact.result_hash}`"
+        )
 
         with st.expander("Why this surfaced"):
-            st.markdown(
-                f"- **Normalized impact:** {candidate.impact_score:.3f}\n"
-                f"- **Novelty factor:** {rendered.novelty_factor:.3f}\n"
-                f"- **Ranking score:** {rendered.score:.3f}\n"
-                f"- **Ranking method:** {rendered.ranking_method['description']}\n"
-                f"- **Metric family:** {candidate.family}\n"
-                f"- **Underlying answer:** `{candidate.artifact.result_hash}`\n"
-                f"- **Fact hash:** `{rendered.fact_hash}`\n"
-                f"- **Presentation hash:** `{rendered.presentation_hash}`\n"
-                f"- **Resolution:** {candidate.artifact.resolution.reason}"
-            )
-            if candidate.event_name:
-                st.caption(f"Registered event flag: {candidate.event_name}. This is context, "
-                           "not a causal attribution.")
-            if candidate.fork_label:
-                st.caption(f"Material alternate: {candidate.fork_label}.")
-            context = rendered.fact_payload()["drillthrough_context"]
-            if context["window"] or context["basis"]:
-                st.caption(
-                    "Saved window/comparison controls are preserved for breakdown navigation "
-                    "only; they do not alter the standardized ranking computation."
-                )
+            _render_why(rendered)
+    if expand:
+        show_digest_dialog(rendered)
 
 
 def render(persona: str | None = None, scope: Mapping | None = None,
            store: DigestHistoryStore | None = None) -> None:
     st.title("Daily digest")
-    st.caption("The three highest-ranked governed signals in the current monthly data, using "
-               "a fixed latest-month versus prior-six-month method. The selection changes "
-               "when data, governance, scope, or eligible watched items change.")
+    st.caption(
+        "The three highest-ranked, scope-diverse governed stories in the current monthly "
+        "data. Priority score v2 uses a fixed latest-month versus prior-six-month method: "
+        "45% standardized movement, 20% relative movement, and 35% business scale; "
+        "low-base guards suppress percentage inflation."
+    )
     persona, scope = _resolved_context(persona, scope)
     st.markdown(f"**View:** {persona} · **Scope:** {sl.scope_string(scope)}")
 

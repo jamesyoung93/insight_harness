@@ -102,7 +102,8 @@ PERSONAS = (
     PersonaDefinition(
         "district_manager",
         "District Manager",
-        ("trx", "nrx", "call_attainment", "payer_mix", "new_writers"),
+        ("trx", "nrx", "call_attainment", "payer_mix", "new_writers",
+         "incoming_referrals"),
         _DM_SCOPE,
         "R3M",
         "MoM",
@@ -111,7 +112,7 @@ PERSONAS = (
     PersonaDefinition(
         "brand_marketing",
         "Brand Marketing",
-        ("trx", "nrx", "nbrx", "trx_share", "new_writers"),
+        ("trx", "nrx", "nbrx", "trx_share", "new_writers", "hcp_cohort"),
         _NATIONAL,
         "R6M",
         "YoY",
@@ -120,7 +121,8 @@ PERSONAS = (
     PersonaDefinition(
         "market_access",
         "Market Access",
-        ("trx_share", "payer_mix", "commercial_trx", "trx"),
+        ("trx_share", "incoming_referrals", "active_referrers", "payer_mix",
+         "commercial_trx", "trx"),
         _NATIONAL,
         "R6M",
         "YoY",
@@ -129,7 +131,8 @@ PERSONAS = (
     PersonaDefinition(
         "executive",
         "Executive",
-        ("trx", "trx_share", "nbrx", "new_writers", "commercial_trx"),
+        ("trx", "trx_share", "nbrx", "new_writers", "commercial_trx",
+         "hcp_cohort"),
         _NATIONAL,
         "R12M",
         "YoY",

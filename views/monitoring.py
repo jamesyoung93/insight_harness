@@ -49,6 +49,19 @@ def _display_value(art, value: float | None) -> str:
     return common.format_artifact_value(art, value)
 
 
+def _movement_summary(row, variant: str) -> str:
+    latest = common.format_metric_value(row.metric_id, variant, row.latest)
+    if bool(getattr(row, "low_base", False)):
+        typical_min = common.format_metric_value(
+            row.metric_id, variant, getattr(row, "typical_min", row.trailing_mean))
+        typical_max = common.format_metric_value(
+            row.metric_id, variant, getattr(row, "typical_max", row.trailing_mean))
+        return f"{latest} latest vs a typical {typical_min}–{typical_max} · low-base guard"
+    trailing = common.format_metric_value(row.metric_id, variant, row.trailing_mean)
+    movement = common.format_native_delta(row.metric_id, variant, row.native_delta)
+    return f"{latest} latest vs {trailing} recent norm · movement {movement}"
+
+
 def _remove_saved(store: saved_insights.InMemorySavedInsightStore,
                   insight_id: str) -> None:
     store.remove(insight_id)
@@ -142,18 +155,19 @@ def render() -> None:
                 "smaller movements.")
         return
 
-    st.caption("Each row is a movement the system surfaced on its own. Priority is a "
-               "unitless 0–100 ranking that combines standardized and relative movement; "
-               "native movement remains visible beside it.")
+    st.caption(
+        "Each row is one distinct movement story. Priority score v2 is a unitless 0–100 "
+        "ranking: 45% standardized movement + 20% relative movement + 35% business scale. "
+        "Business scale compares native movement with that metric's national monthly "
+        "volume; low bases suppress the relative and scale terms."
+    )
     for row in feed.itertuples():
         direction = row.direction if row.direction in {"up", "down", "flat"} else "flat"
         with st.container(key=f"monitoring_flag_{direction}_{row.Index}"):
             c1, c2, c3, c4 = st.columns([2.4, 2.4, 1.4, 1.8])
             c1.markdown(f"**{row.metric}** · {row.scope}")
             variant = sl.default_variant(row.metric_id)
-            latest = common.format_metric_value(row.metric_id, variant, row.latest)
-            trailing = common.format_metric_value(row.metric_id, variant, row.trailing_mean)
-            c2.caption(f"{latest} latest vs {trailing} trailing · z={row.z}")
+            c2.caption(_movement_summary(row, variant))
             movement = common.format_native_delta(row.metric_id, variant, row.native_delta)
             priority = f"Priority {row.impact_score * 100:.0f}/100"
             c3.markdown(
@@ -168,6 +182,29 @@ def render() -> None:
                 on_click=common.queue_question,
                 args=(services.breakdown_question(row.metric_id, {row.dim: row.value}),),
             )
+            with st.expander("Why this surfaced"):
+                components = getattr(row, "priority_components", {}) or {}
+                st.caption(
+                    f"Standardized movement: {abs(float(row.z)):.2f}σ · "
+                    f"priority: {row.impact_score * 100:.1f}/100"
+                )
+                if components:
+                    st.caption(
+                        "Bounded components · standardized "
+                        f"{float(components.get('standardized', 0)):.3f} · relative "
+                        f"{float(components.get('relative', 0)):.3f} · business scale "
+                        f"{float(components.get('business_scale', 0)):.3f}"
+                    )
+                st.caption(f"Formula: {services.PRIORITY_SCORE_FORMULA}")
+                if bool(getattr(row, "low_base", False)):
+                    reason = getattr(row, "low_base_reason", "registered low-base floor")
+                    st.caption(
+                        f"Low-base guard active ({reason}); percentage and scale inflation "
+                        "do not contribute to priority."
+                    )
+                also_visible = tuple(getattr(row, "also_visible_as", ()) or ())
+                if also_visible:
+                    st.caption("Also visible as: " + "; ".join(also_visible))
     with st.expander("All flagged movements, as a table"):
         display = feed.assign(
             latest_display=[
@@ -186,10 +223,15 @@ def render() -> None:
                 for row in feed.itertuples()
             ],
             priority_score=(feed["impact_score"] * 100).round(1),
+            also_visible_as=[
+                "; ".join(value) if isinstance(value, (list, tuple)) else str(value or "")
+                for value in feed.get("also_visible_as", [""] * len(feed))
+            ],
         )
         st.dataframe(
             display[["month", "metric", "scope", "latest_display", "trailing_display",
-                     "native_movement", "z", "priority_score", "direction"]].rename(
+                     "native_movement", "z", "priority_score", "direction",
+                     "also_visible_as"]].rename(
                 columns={"latest_display": "latest", "trailing_display": "trailing",
                          "native_movement": "movement", "priority_score": "priority (0–100)"}),
             width="stretch", hide_index=True,

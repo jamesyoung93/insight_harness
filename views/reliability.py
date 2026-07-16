@@ -78,8 +78,12 @@ def _scoreboard(report: dict, history: pd.DataFrame) -> None:
     previous = _previous_run(history, report.get("recorded_ts"))
 
     def delta(key: str) -> str | None:
-        return (f"{(rates[key] - previous[key]) * 100:+.0f}pp"
-                if previous is not None else None)
+        if previous is None:
+            return None
+        change = rates[key] - previous[key]
+        # A zero-point delta is first-run noise and, for correction rate, can
+        # look like a red regression even though nothing changed.
+        return None if abs(change) < 0.0005 else f"{change * 100:+.1f}pp"
 
     st.subheader("Current reliability scorecard")
     c1, c2, c3, c4 = st.columns(4)
@@ -129,11 +133,18 @@ def render() -> None:
     st.button("Run accuracy check again", type="secondary", on_click=_request_rerun)
 
     if report is not None:
-        st.dataframe(report["result"], width="stretch", hide_index=True)
+        display = report["result"].copy()
+        for column in ("pass", "reproducible"):
+            if column in display:
+                display[column] = display[column].map(
+                    {True: "✓", False: "Needs review"}).fillna("—")
+        st.dataframe(display, width="stretch", hide_index=True)
 
-    if len(hist) >= 2:
+    if len(hist) >= 3:
         st.markdown("**Trend across recorded runs**")
         _trend_chart(hist)
+    elif len(hist) >= 2:
+        st.caption("Reliability trend appears after three recorded runs.")
 
     st.divider()
     st.markdown("**Correction record** — answers users flagged, reviewed against the "

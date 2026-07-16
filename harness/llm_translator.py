@@ -18,16 +18,17 @@ from __future__ import annotations
 import json
 import os
 
-from . import semantic_layer as sl
+from . import baskets, semantic_layer as sl
 from . import triage
 
 DEFAULT_MODEL = "claude-sonnet-5"
 
 VALID_CLASSES = {triage.RETRIEVAL, triage.DESCRIPTIVE, triage.DIAGNOSTIC,
-                 triage.CAUSAL, triage.PREDICTIVE, triage.OUT_OF_SCOPE}
+                 triage.COHORT, triage.CAUSAL, triage.PREDICTIVE,
+                 triage.OUT_OF_SCOPE}
 RESPONSE_KEYS = {
     "question_class", "metric", "filters", "trend", "dim_breakdown",
-    "event_id", "template", "window", "compare_basis", "reason",
+    "event_id", "template", "window", "compare_basis", "basket_id", "reason",
 }
 
 
@@ -52,28 +53,36 @@ def _registry_context() -> str:
                     "default_metric": e.get("default_metric", e["metrics"][0]),
                     "keywords": e["keywords"]}
               for eid, e in sl.EVENTS.items()}
-    return json.dumps({"metrics": metrics, "dimensions": dims, "events": events}, indent=1)
+    return json.dumps({"metrics": metrics, "dimensions": dims, "events": events,
+                       "market_baskets": sorted(baskets.BASKETS),
+                       "retrieval_templates": [
+                           "whitespace", "top_accounts", "top_writers",
+                       ]}, indent=1)
 
 
 SYSTEM = """You translate a business question into a structured intent for a \
 deterministic analytics engine. You do NOT answer the question. Respond with \
 ONLY a JSON object, no prose, no markdown fences, with exactly these keys:
 
-question_class: one of "Retrieval" | "Descriptive" | "Diagnostic" | "Causal" | "Predictive" | "Out of scope"
+question_class: one of "Retrieval" | "Descriptive" | "Diagnostic" | "Cohort comparison" | "Causal" | "Predictive" | "Out of scope"
 metric: a metric id from the registry, or null. For Causal questions about a registered event, set the metric the question asks about; if none is stated, use that event's registered default_metric.
 filters: object mapping dimension name -> ONE registry value or an ARRAY of registry values (empty object if none)
 trend: true if the question asks for a time series / by-month view, else false
 dim_breakdown: for Diagnostic only, the dimension explicitly requested, or null
 event_id: an event id from the registry if the question asks about the causal impact of that specific event, else null
-template: for Retrieval only, "whitespace" (high-value accounts with no recent activity) or "top_accounts", else null
+template: for Retrieval only, "whitespace" (high-value accounts with no recent activity), "top_accounts" (generic TRx/NRx/NBRx ranking), or "top_writers" (the fixed governed top-15 trailing-NRx-share recipe), else null
 window: null, or an explicit time window the question names: {"kind":"last_n","n":<int>} | {"kind":"quarter","q":<1-4>,"year":<yyyy>} | {"kind":"month","month":<1-12>,"year":<yyyy>}
 compare_basis: null, or "prior_month" | "prior_quarter" | "yoy" when the question names a comparison basis for a change
+basket_id: for an explicit TRx-share basket only, "il17_class" or "advanced_therapy"; otherwise null
 reason: for Predictive / Out of scope / Causal-with-no-event, one sentence explaining the refusal, else ""
 
 Classification rules:
 - "why / what caused / impact of / ROI of" -> Causal. If it matches a registered event, set event_id; otherwise leave event_id null and give a reason suggesting the diagnostic reframe.
 - "which X account for / break down / where did the change come from" -> Diagnostic.
 - "list / find / top N / whitespace / no activity" -> Retrieval.
+- "top 15 HCP writers by trailing-12-month NRx share" -> Retrieval with metric "nrx" and template "top_writers".
+- a top-N NRx-share activity-mix question explicitly asking for matched peers -> Cohort comparison, metric "nrx".
+- explicit IL-17-class or advanced-therapy TRx share -> Descriptive with metric "trx_share" and the registered basket_id.
 - forecasts and predictions -> Predictive (always refused; say why in reason).
 - a question that cannot be mapped to a registered metric or template -> Out of scope, with reason.
 - Never invent metric ids, dimension values, or event ids not present in the registry.
@@ -153,13 +162,24 @@ def _validate(question: str, raw: str) -> tuple[triage.Intent, dict]:
     if event_id is not None and event_id not in sl.EVENTS:
         raise TranslationError(f"unregistered event: {event_id!r}", kind="rejected")
 
+    basket_id = d.get("basket_id")
+    if basket_id is not None and basket_id not in baskets.BASKETS:
+        raise TranslationError(f"unregistered market basket: {basket_id!r}", kind="rejected")
+    if basket_id is not None and not (qc == triage.DESCRIPTIVE and metric == "trx_share"):
+        raise TranslationError(
+            "basket_id is valid only for Descriptive trx_share intents", kind="rejected")
+
     template = d.get("template")
-    if template not in (None, "whitespace", "top_accounts"):
+    if template not in (None, "whitespace", "top_accounts", "top_writers"):
         raise TranslationError(f"invalid template: {template!r}", kind="rejected")
     if qc == triage.RETRIEVAL and template is None:
         raise TranslationError("Retrieval intents require a registered template", kind="rejected")
     if qc != triage.RETRIEVAL and template is not None:
         raise TranslationError("templates are valid only for Retrieval intents", kind="rejected")
+    if template == "top_writers" and metric != "nrx":
+        raise TranslationError(
+            "top_writers requires metric 'nrx' and its governed NRx-share recipe",
+            kind="rejected")
 
     window_spec = d.get("window")
     window = None
@@ -192,6 +212,12 @@ def _validate(question: str, raw: str) -> tuple[triage.Intent, dict]:
     # enforce the same guardrails the rule parser enforces
     if qc in (triage.DESCRIPTIVE, triage.DIAGNOSTIC) and metric is None:
         raise TranslationError("descriptive/diagnostic intent without a metric", kind="rejected")
+    if qc == triage.COHORT:
+        metric = metric or "nrx"
+        if metric != "nrx" or d["trend"] or window is not None or basis is not None:
+            raise TranslationError(
+                "Cohort comparison requires metric 'nrx' and the governed R3M recipe",
+                kind="rejected")
     if event_id is not None and qc != triage.CAUSAL:
         raise TranslationError("event_id is valid only for Causal intents", kind="rejected")
     if qc == triage.CAUSAL and event_id is not None and metric is None:
@@ -213,7 +239,7 @@ def _validate(question: str, raw: str) -> tuple[triage.Intent, dict]:
         question=question, question_class=qc, metric=metric, filters=filters,
         trend=d["trend"], dim_breakdown=dim_breakdown,
         event_id=event_id, template=template,
-        reason=reason, window=window, compare_basis=basis,
+        reason=reason, window=window, compare_basis=basis, basket_id=basket_id,
     )
     meta = {"translator": "llm", "raw": cleaned, "validated": True,
             "model_reason": d["reason"]}

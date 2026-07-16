@@ -24,6 +24,10 @@ def test_generator_is_in_process_deterministic_and_reconciled():
     for left, right in zip(first, second):
         pd.testing.assert_frame_equal(left, right, check_exact=True)
 
+    first_referral = generator.build_referrals(first[0], first[2], generator.SEED)
+    second_referral = generator.build_referrals(second[0], second[2], generator.SEED)
+    pd.testing.assert_frame_equal(first_referral, second_referral, check_exact=True)
+
     source_a, source_b, accounts = first
     assert not source_a.duplicated(["account_id", "month"]).any()
     assert set(source_a["account_id"]) == set(accounts["account_id"])
@@ -34,7 +38,8 @@ def test_generator_is_in_process_deterministic_and_reconciled():
 def test_checked_in_data_version_matches_csv_bytes_and_ground_truth():
     digest = hashlib.sha256()
     data_dir = Path(sl.DATA_DIR)
-    for name in ("accounts.csv", "fact_source_a.csv", "fact_source_b.csv"):
+    for name in ("accounts.csv", "fact_referral.csv", "fact_source_a.csv",
+                 "fact_source_b.csv"):
         digest.update((data_dir / name).read_bytes())
     assert digest.hexdigest()[:12] == sl.data_version() == sl.ground_truth()["data_version"]
 
@@ -43,6 +48,7 @@ def test_public_registry_is_wholesale_pharma():
     assert set(sl.METRICS) == {
         "trx", "nrx", "nbrx", "trx_share", "calls", "call_plan",
         "call_attainment", "samples", "speaker_attendance", "new_writers",
+        "referrals_in", "active_referrers",
     }
     assert sl.DIMENSIONS == ["territory", "district", "region", "specialty",
                              "payer_channel"]

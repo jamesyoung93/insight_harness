@@ -1,7 +1,7 @@
 """Question triage: classify, parse, route.
 
 Incoming questions are classified into {RETRIEVAL, DESCRIPTIVE, DIAGNOSTIC,
-CAUSAL, PREDICTIVE, OUT_OF_SCOPE} and parsed into a structured Intent that the
+COHORT, CAUSAL, PREDICTIVE, OUT_OF_SCOPE} and parsed into a structured Intent that the
 deterministic engines consume.
 
 This rule-based parser is the default translator and the fallback whenever a
@@ -15,8 +15,9 @@ from dataclasses import dataclass, field
 
 from . import semantic_layer as sl
 
-RETRIEVAL, DESCRIPTIVE, DIAGNOSTIC, CAUSAL, PREDICTIVE, OUT_OF_SCOPE = (
-    "Retrieval", "Descriptive", "Diagnostic", "Causal", "Predictive", "Out of scope")
+RETRIEVAL, DESCRIPTIVE, DIAGNOSTIC, COHORT, CAUSAL, PREDICTIVE, OUT_OF_SCOPE = (
+    "Retrieval", "Descriptive", "Diagnostic", "Cohort comparison", "Causal",
+    "Predictive", "Out of scope")
 
 _CAUSAL = re.compile(r"\b(why|caused?|drove|drive[sn]?|impact of|effect of|because of|due to|roi of)\b", re.I)
 _DIAGNOSTIC = re.compile(
@@ -24,8 +25,22 @@ _DIAGNOSTIC = re.compile(
     r"which specialties|which territories|which districts|which payer channels|"
     r"contribut|where did)\b", re.I)
 _RETRIEVAL = re.compile(r"\b(list|find|show me the accounts|which accounts|top \d+|whitespace|no activity)\b", re.I)
+_TOP_WRITERS = re.compile(
+    r"(?=.*\btop\s+15\b)(?=.*\b(?:hcp\s+writers?|hcps?)\b)"
+    r"(?=.*\bnrx[\s-]+share\b)",
+    re.I,
+)
 _PREDICTIVE = re.compile(r"\b(forecast|predict|will|next quarter|next year|project(ed|ion)?)\b", re.I)
 _TREND = re.compile(r"\b(trend|over time|by month|monthly|last \d+ months)\b", re.I)
+_COHORT = re.compile(
+    r"(?=.*\btop\b)(?=.*\bnrx[\s-]+share\b)"
+    r"(?=.*\b(?:peer|match|compar|activity|mix|profile|different|gap))",
+    re.I,
+)
+_BASKET_PATTERNS = {
+    "il17_class": re.compile(r"\bil\s*[- ]?17(?:\s+class|\s+basket|\s+market)?\b", re.I),
+    "advanced_therapy": re.compile(r"\badvanced[- ]therapy(?:\s+market|\s+basket)?\b", re.I),
+}
 
 # explicit time windows
 _W_LAST_N = re.compile(r"\blast (\d{1,2}) months?\b", re.I)
@@ -125,6 +140,7 @@ class Intent:
     template: str | None = None                   # retrieval template id
     window: Window | None = None                  # validated explicit window
     compare_basis: str | None = None              # prior_month|prior_quarter|yoy
+    basket_id: str | None = None                   # explicit governed share basket
 
 
 def _find_metric(q: str) -> str | None:
@@ -174,18 +190,28 @@ def _find_breakdown_dimension(q: str) -> str | None:
     return None
 
 
+def _find_basket(q: str) -> str | None:
+    matches = [basket_id for basket_id, pattern in _BASKET_PATTERNS.items()
+               if pattern.search(q)]
+    return matches[0] if len(matches) == 1 else None
+
+
 def parse(question: str) -> Intent:
     q = question.strip()
     metric = _find_metric(q)
     filters = _find_filters(q)
     window, window_refusal = resolve_window(_window_spec(q))
     basis = _find_basis(q)
+    basket_id = _find_basket(q)
 
     if window_refusal:
         return Intent(q, OUT_OF_SCOPE, metric, filters, reason=window_refusal)
 
     if _PREDICTIVE.search(q):
         return Intent(q, PREDICTIVE, metric, filters, reason=refusal_reason(PREDICTIVE))
+
+    if _COHORT.search(q):
+        return Intent(q, COHORT, "nrx", filters)
 
     if _CAUSAL.search(q):
         event = _find_event(q)
@@ -204,12 +230,17 @@ def parse(question: str) -> Intent:
 
     if _RETRIEVAL.search(q):
         ql = q.lower()
+        if _TOP_WRITERS.search(q):
+            # NRx share is an account-grain selection field, not the registered
+            # aggregate TRx-share metric that the generic "share" keyword finds.
+            return Intent(q, RETRIEVAL, "nrx", filters, template="top_writers")
         template = "whitespace" if ("whitespace" in ql or "no activity" in ql or "no calls" in ql) else "top_accounts"
         return Intent(q, RETRIEVAL, metric or "trx", filters, template=template)
 
     if metric is not None:
         return Intent(q, DESCRIPTIVE, metric, filters, trend=bool(_TREND.search(q)),
-                      window=window, compare_basis=basis)
+                      window=window, compare_basis=basis,
+                      basket_id=basket_id if metric == "trx_share" else None)
 
     return Intent(q, OUT_OF_SCOPE, reason=refusal_reason(OUT_OF_SCOPE))
 
