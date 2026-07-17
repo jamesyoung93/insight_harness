@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 from streamlit.testing.v1 import AppTest
 
-from harness import digest, digest_narrator, semantic_layer as sl
+from harness import digest, digest_narrator, profiles, semantic_layer as sl, voice
 from harness.digest_store import (DigestHistoryStore, InMemoryDigestHistoryStore,
                                   history_fingerprint)
 from harness import triage
@@ -45,10 +45,17 @@ def _event_item():
     return digest._make_item(candidate, 1.0, 1.0)
 
 
+def _share_divergence_item():
+    scan = digest.scan_candidates(persona="Executive", scope={}, watches=[])
+    candidate = next(item for item in scan.candidates
+                     if item.kind == "divergence" and item.metric == "trx_share")
+    return digest._make_item(candidate, 1.0, 1.0)
+
+
 def _response(item, *, text=None, metric=None, scope=None, direction=None,
               causal=False):
     return {
-        "text": text or item.template_headline,
+        "text": text or digest_view.presentation_for(item, "Executive").headline,
         "metric": metric or item.candidate.metric,
         "scope": scope or item.fact_payload()["scope"],
         "direction": direction or digest_narrator.expected_direction(item),
@@ -257,10 +264,103 @@ def test_fact_and_presentation_hashes_have_distinct_contracts():
         assert mutated.presentation_hash != item.presentation_hash
 
 
+def test_persona_copy_is_view_only_and_preserves_the_item_artifact():
+    item = _movement_item()
+    before = item.to_json()
+    fact_hash = item.fact_hash
+    presentation_hash = item.presentation_hash
+
+    copies = [digest_view.presentation_for(item, persona) for persona in (
+        "Sales Rep", "District Manager", "Brand Marketing", "Market Access", "Executive",
+    )]
+
+    assert len({copy.headline for copy in copies}) == 5
+    assert item.to_json() == before
+    assert item.fact_hash == fact_hash
+    assert item.presentation_hash == presentation_hash
+
+
 def test_structured_narrator_accepts_only_a_fully_grounded_response():
     item = _movement_item()
     valid, reason = digest_narrator.validate_rewrite(item, _response(item))
     assert valid, reason
+
+
+def test_narrator_rejects_machine_copy_even_when_numeric_facts_match():
+    movement = _movement_item()
+    human = digest_view.presentation_for(movement, "Executive").headline
+    for suffix, expected_reason in (
+        (" governed artifact.", "methodology"),
+        (" gap_rank.", "machine identifier"),
+    ):
+        valid, reason = digest_narrator.validate_rewrite(
+            movement, _response(movement, text=human + suffix))
+        assert not valid
+        assert expected_reason in reason
+
+    fork = _share_divergence_item()
+    scope = voice.scope_text(fork.candidate.filter_dict, "executive",
+                             default_scope={})
+    metric = voice.metric_name(fork.candidate.metric)
+    attacks = (
+        f"{scope} {metric} was 9.7% above 27.8%; the definitions are different.",
+        f"{scope} {metric} differs by 9.7% vs 27.8% relative difference.",
+    )
+    for text in attacks:
+        valid, reason = digest_narrator.validate_rewrite(
+            fork, _response(fork, text=text), persona="executive")
+        assert not valid
+        assert "passive" in reason or "relative percentage" in reason
+
+
+def test_each_persona_canonical_template_validates_for_both_sample_directions():
+    scan = digest.scan_candidates(persona="Executive", scope={}, watches=[])
+    sample_candidates = [
+        candidate for candidate in scan.candidates
+        if candidate.metric == "samples" and candidate.facts is not None
+    ]
+    directions = {
+        "above": next(candidate for candidate in sample_candidates
+                      if candidate.facts.absolute_change > 0),
+        "below": next(candidate for candidate in sample_candidates
+                      if candidate.facts.absolute_change < 0),
+    }
+    for candidate in directions.values():
+        item = digest._make_item(candidate, 1.0, 1.0)
+        for persona in voice.VOICE_PROFILES:
+            presentation = digest_view.presentation_for(item, persona)
+            scope_label = voice.scope_text(
+                candidate.filter_dict, persona, default_scope={})
+            metric_label = voice.metric_subject(candidate.metric)
+            valid, reason = digest_narrator.validate_rewrite(
+                item,
+                _response(item, text=presentation.headline),
+                template_headline=presentation.headline,
+                scope_label=scope_label,
+                metric_label=metric_label,
+                persona=persona,
+            )
+            assert valid, f"{persona}/{candidate.filter_dict}: {reason}"
+
+
+def test_default_scope_pronouns_validate_on_the_direct_narrator_path():
+    for persona_id in ("sales_rep", "district_manager"):
+        persona = profiles.PERSONAS_BY_ID[persona_id]
+        expected_scope = dict(persona.default_scope)
+        scan = digest.scan_candidates(
+            persona=persona.label, scope=expected_scope, watches=[])
+        candidate = next(
+            candidate for candidate in scan.candidates
+            if candidate.facts is not None
+            and candidate.filter_dict == expected_scope
+            and candidate.kind != "event"
+            and candidate.event_id is None)
+        item = digest._make_item(candidate, 1.0, 1.0)
+        presentation = digest_view.presentation_for(item, persona_id)
+        valid, reason = digest_narrator.validate_rewrite(
+            item, _response(item, text=presentation.headline), persona=persona_id)
+        assert valid, reason
+        assert voice.scope_text(expected_scope, persona_id) in presentation.headline
 
 
 def test_narrator_rejects_polarity_unit_scope_metric_and_causal_attacks():
@@ -307,11 +407,86 @@ def test_registered_event_rewrites_are_policy_rejected_without_using_ui_quota(mo
 
     state = {"_model_calls_used": 7}
     monkeypatch.setattr(digest_view, "st", SimpleNamespace(session_state=state))
-    rendered = digest_view._narrated(item, "test-key", "model-a")
+    rendered = digest_view._narrated(item, "test-key", "model-a", "Executive")
     assert rendered.narration["fallback_kind"] == "policy"
     assert state["_model_calls_used"] == 7
     assert not invoked
 
+
+def test_view_narrator_cache_and_validation_use_the_persona_voice_template(monkeypatch):
+    item = _movement_item()
+    calls = []
+
+    def rewrite(candidate, **kwargs):
+        calls.append(kwargs)
+        return candidate.with_narration(kwargs["template_headline"], {
+            "narrator": "template", "validated": True,
+        })
+
+    state = {"_model_calls_used": 0}
+    monkeypatch.setattr(digest_view, "st", SimpleNamespace(session_state=state))
+    monkeypatch.setattr(digest_narrator, "rewrite_item", rewrite)
+
+    rep = digest_view._narrated(item, "test-key", "model-a", "Sales Rep")
+    executive = digest_view._narrated(item, "test-key", "model-a", "Executive")
+    repeat = digest_view._narrated(item, "test-key", "model-a", "Sales Rep")
+
+    assert len(calls) == 2
+    assert repeat is rep
+    assert rep.headline != executive.headline
+    for persona, call in zip(("Sales Rep", "Executive"), calls):
+        expected = digest_view.presentation_for(item, persona)
+        assert call["template_headline"] == expected.headline
+        assert call["persona"] == persona
+        assert call["scope_label"] == voice.scope_text(item.candidate.filter_dict, persona)
+        assert "=" not in call["scope_label"]
+        assert call["metric_label"] == voice.metric_subject(item.candidate.metric)
+
+
+def test_persona_download_copy_and_hash_match_the_exact_rendered_item():
+    item = _movement_item()
+    before_json = item.to_json()
+    before_fact = item.fact_hash
+    persona = "Sales Rep"
+    payload = json.loads(digest_view._item_download_json(item, persona))
+    rendered = digest_view.presentation_for(item, persona)
+    display = payload["voice_presentation"]
+    assert display["headline"] == rendered.headline
+    assert display["detail"] == rendered.detail
+    assert display["chip"] == rendered.chip
+    assert display["presentation_hash"] == voice.presentation_hash(
+        item.fact_hash, persona, rendered)
+    assert item.to_json() == before_json
+    assert item.fact_hash == before_fact
+
+    hashes = {
+        voice.presentation_hash(
+            item.fact_hash, persona_id,
+            digest_view.presentation_for(item, persona_id))
+        for persona_id in voice.VOICE_PROFILES
+    }
+    assert len(hashes) == 5
+
+
+def test_complete_digest_export_hash_covers_all_displayed_copy():
+    artifact = _build(persona="Executive")
+    exported, display_hash = digest_view._digest_download(artifact, "Executive")
+    payload = json.loads(exported)
+    bundle = payload["voice_presentation"]
+    assert bundle["presentation_hash"] == display_hash
+    assert len(bundle["items"]) == len(artifact.items)
+    for item, displayed in zip(artifact.items, bundle["items"]):
+        rendered = digest_view.presentation_for(item, "Executive")
+        assert displayed["headline"] == rendered.headline
+        assert displayed["detail"] == rendered.detail
+        assert displayed["chip"] == rendered.chip
+
+    changed = dict(bundle)
+    changed["items"] = [dict(item) for item in bundle["items"]]
+    changed["items"][0]["headline"] += " Copy edit."
+    changed.pop("presentation_hash")
+    assert voice.presentation_hash(
+        artifact.fact_hash, "Executive", changed) != display_hash
 
 def test_narrator_success_and_rejection_fallback(tmp_path, monkeypatch):
     item = _movement_item()
@@ -330,7 +505,7 @@ def test_narrator_success_and_rejection_fallback(tmp_path, monkeypatch):
             item, text=item.template_headline + " caused by launch")))])
     client.messages.create = lambda **_: bad
     fallback = digest_narrator.rewrite_item(item, api_key="test-key", model="model-a")
-    assert fallback.headline == item.template_headline
+    assert fallback.headline == digest_view.presentation_for(item, "Executive").headline
     assert fallback.narration["fallback_kind"] == "rejected"
 
 
@@ -344,7 +519,7 @@ def test_narrator_timeout_or_error_falls_back_without_exposing_exception(monkeyp
     monkeypatch.setitem(sys.modules, "anthropic",
                         SimpleNamespace(Anthropic=lambda **_: client))
     fallback = digest_narrator.rewrite_item(item, api_key="test-key")
-    assert fallback.headline == item.template_headline
+    assert fallback.headline == digest_view.presentation_for(item, "Executive").headline
     assert fallback.narration["fallback_kind"] == "unavailable"
     assert "secret provider diagnostic" not in fallback.narration["fallback_reason"]
 
@@ -356,11 +531,14 @@ def test_router_digest_view_uses_session_history_drills_through_and_downloads():
     assert isinstance(at.session_state["_digest_session_history_store"],
                       InMemoryDigestHistoryStore)
     labels = [button.label for button in at.get("download_button")]
-    assert labels.count("Download artifact") == 3
+    assert labels.count("Download details") == 3
     assert "Download complete digest" in labels
     assert not at.code
-    captions = " ".join(str(item.value) for item in at.caption)
-    assert "Evidence stamp · fact hash:" in captions
+    evidence = [expander for expander in at.expander if expander.label == "Evidence"]
+    assert len(evidence) == 3
+    assert all(any("Fact hash:" in str(caption.value)
+                   for caption in expander.caption)
+               for expander in evidence)
     next(button for button in at.button if button.label == "Break this down").click().run()
     assert at.session_state["nav"] == "Home"
     assert at.session_state["ask_src"] in sl.SOURCES
@@ -374,5 +552,5 @@ def test_share_divergence_headline_formats_ratio_values_as_percentages():
         if candidate.kind == "divergence" and candidate.metric == "trx_share"
     )
     headline, _ = digest._headline(candidate)
-    assert headline.count("%") >= 3  # relative gap + governed + alternate shares
+    assert headline.count("%") >= 3  # raw artifact contract remains unchanged
     assert "governed 0.1 vs" not in headline

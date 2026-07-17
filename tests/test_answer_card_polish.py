@@ -7,7 +7,7 @@ import pandas as pd
 from streamlit.testing.v1 import AppTest
 
 from harness import pipeline
-from harness import semantic_layer as sl
+from harness import voice
 from views import common
 
 
@@ -26,28 +26,31 @@ def test_hero_content_preserves_each_engine_class_semantics():
     descriptive = pipeline.answer("What is TRx in the West region?")
     value, label, body = common.hero_figure_content(descriptive)
     assert value == common.format_artifact_value(descriptive, descriptive.value)
-    assert "TRx units · region=West · 2026-06" == label
-    assert body == descriptive.headline
+    assert "TRx units · West · 2026-06" == label
+    assert body == voice.tile_presentation(
+        descriptive, persona="executive").headline
 
     diagnostic = pipeline.answer("Which specialties account for the TRx change?")
     value, label, body = common.hero_figure_content(diagnostic)
     assert value == common.format_native_delta(
         diagnostic.resolution.metric, diagnostic.resolution.variant, diagnostic.value)
     assert f'{diagnostic.extras["m0"]}–{diagnostic.extras["m1"]}' in label
-    assert body == diagnostic.headline
+    assert body == voice.tile_presentation(
+        diagnostic, persona="executive").headline
 
     causal = pipeline.answer(
         "What was the impact of the competitor launch in West Cardiology?")
     value, label, body = common.hero_figure_content(causal)
     assert value == f'{causal.extras["estimate"]["did_pct"] * 100:+.1f}%'
-    assert "region=West, specialty=Cardiology" in label
-    assert body == causal.headline
+    assert "West · Cardiology" in label
+    assert body == voice.tile_presentation(causal, persona="executive").headline
 
     retrieval = pipeline.answer("List whitespace HCPs with no activity")
     value, label, body = common.hero_figure_content(retrieval)
     assert value == f"{len(retrieval.table):,} records"
     assert label.endswith("current account snapshot")
-    assert body == retrieval.headline
+    assert body == voice.tile_presentation(
+        retrieval, persona="executive").headline
 
 
 def test_hero_metadata_uses_computed_window_and_causal_scope():
@@ -60,7 +63,9 @@ def test_hero_metadata_uses_computed_window_and_causal_scope():
 
     causal = pipeline.answer("What was the impact of the speaker program?")
     _, causal_label, _ = common.hero_figure_content(causal)
-    assert sl.scope_string(causal.extras["effective_scope"]) in causal_label
+    assert "East Cardiology 1 (E-CAR-01)" in causal_label
+    assert "East Endocrinology 1 (E-END-01)" in causal_label
+    assert "territory" not in causal_label.casefold()
     estimate = causal.extras["estimate"]
     assert causal_label.endswith(f'{estimate["pre"][0]}–{estimate["post"][-1]}')
 
@@ -109,8 +114,28 @@ def test_answer_card_markup_and_chart_polish_contracts():
                  if isinstance(layer.get("mark"), dict)
                  and layer["mark"].get("type") == "bar"]
     assert bar_marks == [{"type": "bar", "cornerRadius": 2, "size": 24}]
-    assert "⑂ Same question, different answer" in inspect.getsource(
+    assert "Why two answers exist" in inspect.getsource(
         common._divergence_block)
+
+
+def test_presentation_helpers_do_not_change_result_hashes_or_source_tables():
+    descriptive = pipeline.answer("What is TRx in the West region?")
+    cohort = pipeline.answer(
+        "Compare the activity mix of top 20 HCPs by NRx share with matched peers")
+    expected_hashes = {
+        "descriptive": "0436bd948647",
+        "cohort": "7874ccd5961a",
+    }
+    source_table = cohort.table.copy(deep=True)
+
+    common.hero_figure_content(descriptive, persona="executive")
+    common.hero_figure_content(cohort, persona="executive")
+    rendered_table = voice.humanize_table(cohort.table, persona="executive")
+
+    assert descriptive.result_hash == expected_hashes["descriptive"]
+    assert cohort.result_hash == expected_hashes["cohort"]
+    pd.testing.assert_frame_equal(cohort.table, source_table)
+    assert rendered_table is not cohort.table
 
 
 def test_reusable_hero_uses_44px_semibold_and_escapes_text(monkeypatch):

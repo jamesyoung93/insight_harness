@@ -198,9 +198,18 @@ def test_cohort_answer_renders_grouped_bars_without_monthly_line_assumptions():
     at = AppTest.from_function(_render_cohort_answer, default_timeout=60).run()
     assert not at.exception
     artifact = at.session_state["_cohort_artifact"]
+    assert artifact.result_hash == "7874ccd5961a"
     assert artifact.chart_df is not None and "month" not in artifact.chart_df
     assert len(at.get("vega_lite_chart") or at.get("arrow_vega_lite_chart")) == 1
-    assert any("matched pairs" in item.value for item in at.markdown)
+    markup = " ".join(str(item.value) for item in at.markdown)
+    assert ("Speaker touches per HCP: 5.0 for top HCPs vs 0.6 among matched peers"
+            in markup)
+    assert "19 matched pairs" in markup
+    primary_tables = [item.value for item in at.dataframe
+                      if "Activity" in item.value.columns]
+    assert len(primary_tables) == 1
+    assert {"Metric", "Value format", "Gap rank"}.isdisjoint(
+        primary_tables[0].columns)
 
 
 def test_cohort_recipe_change_changes_recipe_and_result_hashes():

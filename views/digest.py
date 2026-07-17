@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import os
 import hashlib
+import json
 from dataclasses import replace
 from typing import Mapping
 
@@ -12,7 +13,7 @@ import streamlit as st
 
 from harness import digest as digest_service
 from harness import (digest_narrator, profiles, runtime_policy, saved_insights,
-                     semantic_layer as sl, services, triage)
+                     semantic_layer as sl, services, triage, voice)
 from harness.digest_store import DigestHistoryStore, InMemoryDigestHistoryStore
 from views import common
 
@@ -53,6 +54,72 @@ def _sparkline_chart(item) -> alt.Chart | None:
     )
 
 
+def presentation_for(item, persona):
+    """Create view-only persona copy without mutating the digest item artifact."""
+
+    candidate = item.candidate
+    resolution = candidate.artifact.resolution
+    presentation = voice.digest_presentation(
+        persona,
+        kind=candidate.kind,
+        metric=candidate.metric,
+        scope=candidate.filter_dict,
+        facts=candidate.facts.to_dict() if candidate.facts else None,
+        value=candidate.artifact.value,
+        variant=resolution.variant if resolution else None,
+        alternate_label=candidate.fork_label,
+        alternate_value=candidate.fork_value,
+        event_name=candidate.event_name,
+        narration_text=item.headline if item.narration.get("text") else None,
+    )
+    return presentation
+
+
+def _voice_presentation_hash(item, persona) -> str:
+    return voice.presentation_hash(
+        item.fact_hash, persona, presentation_for(item, persona))
+
+
+def _item_download_json(item, persona) -> str:
+    """Export the immutable artifact together with the exact displayed copy."""
+
+    presentation = presentation_for(item, persona)
+    payload = item.to_dict()
+    payload["voice_presentation"] = {
+        "persona": voice.resolve_profile(persona).id,
+        "headline": presentation.headline,
+        "detail": presentation.detail,
+        "chip": presentation.chip,
+        "presentation_hash": voice.presentation_hash(
+            item.fact_hash, persona, presentation),
+    }
+    return json.dumps(payload, indent=2, sort_keys=True, default=str)
+
+
+def _digest_download(artifact, persona) -> tuple[str, str]:
+    """Return an export envelope and hash for the exact persona-visible digest."""
+
+    display_items = []
+    for item in artifact.items:
+        presentation = presentation_for(item, persona)
+        display_items.append({
+            "fact_hash": item.fact_hash,
+            "headline": presentation.headline,
+            "detail": presentation.detail,
+            "chip": presentation.chip,
+            "presentation_hash": voice.presentation_hash(
+                item.fact_hash, persona, presentation),
+        })
+    bundle = {
+        "persona": voice.resolve_profile(persona).id,
+        "items": display_items,
+    }
+    display_hash = voice.presentation_hash(artifact.fact_hash, persona, bundle)
+    payload = artifact.to_dict()
+    payload["voice_presentation"] = bundle | {"presentation_hash": display_hash}
+    return json.dumps(payload, indent=2, sort_keys=True, default=str), display_hash
+
+
 def _resolved_context(persona: str | None, scope: Mapping | None) -> tuple[str, dict]:
     selected_persona = persona or st.session_state.get("home_persona") \
         or st.session_state.get("_home_persona_last") \
@@ -84,19 +151,22 @@ def _session_history_store() -> InMemoryDigestHistoryStore:
     return store
 
 
-def _narrated(item, api_key: str, model: str):
+def _narrated(item, api_key: str, model: str, persona):
     cache = st.session_state.setdefault("_digest_narration_cache", {})
     credential_fingerprint = hashlib.sha256(api_key.encode()).hexdigest()[:8]
+    presentation = presentation_for(item, persona)
+    persona_id = voice.resolve_profile(persona).id
     # Wording is intentionally outside the fact hash, so the phrasing cache
     # must key on the pre-narration presentation contract to avoid serving
     # stale copy after a template-only release.
-    key = (item.presentation_hash, model, credential_fingerprint)
+    key = (item.presentation_hash, persona_id, presentation.headline,
+           model, credential_fingerprint)
     if key not in cache:
         allowed, policy_reason = digest_narrator.rewrite_policy(item)
         if not allowed:
             # This is a local safety decision, not a model call. In particular,
             # registered-event items must never consume the user's UI quota.
-            cache[key] = item.with_narration(item.template_headline, {
+            cache[key] = item.with_narration(presentation.headline, {
                 "narrator": "template", "validated": True,
                 "fallback_kind": "policy", "fallback_reason": policy_reason,
             })
@@ -104,7 +174,7 @@ def _narrated(item, api_key: str, model: str):
             used = int(st.session_state.get("_model_calls_used", 0) or 0)
             limit = runtime_policy.session_model_call_limit()
             if used >= limit:
-                cache[key] = item.with_narration(item.template_headline, {
+                cache[key] = item.with_narration(presentation.headline, {
                     "narrator": "template", "validated": True,
                     "fallback_kind": "quota",
                     "fallback_reason": "session model-call limit reached",
@@ -112,7 +182,12 @@ def _narrated(item, api_key: str, model: str):
             else:
                 st.session_state["_model_calls_used"] = used + 1
                 cache[key] = digest_narrator.rewrite_item(
-                    item, api_key=api_key, model=model)
+                    item, api_key=api_key, model=model,
+                    template_headline=presentation.headline,
+                    scope_label=voice.scope_text(item.candidate.filter_dict, persona),
+                    metric_label=voice.metric_subject(item.candidate.metric),
+                    persona=voice.resolve_profile(persona).label,
+                )
     return cache[key]
 
 
@@ -156,8 +231,9 @@ def _render_why(rendered) -> None:
         f"- **Novelty factor:** {rendered.novelty_factor:.3f}\n"
         f"- **Ranking score:** {rendered.score:.3f}\n"
         f"- **Ranking method:** {rendered.ranking_method['description']}\n"
-        f"- **Metric family:** {candidate.family}\n"
-        f"- **Resolution:** {candidate.artifact.resolution.reason}"
+        f"- **Metric family:** {voice.column_name(candidate.family)}\n"
+        f"- **Resolution:** "
+        f"{voice.humanize_sentence(candidate.artifact.resolution.reason)}"
     )
     if candidate.facts and candidate.kind != "divergence":
         facts = candidate.facts
@@ -187,34 +263,42 @@ def _render_why(rendered) -> None:
 
 
 @st.dialog("Explore digest signal", width="large")
-def show_digest_dialog(rendered) -> None:
+def show_digest_dialog(rendered, persona="Executive") -> None:
     """Expand a digest story through the canonical full artifact renderer."""
 
-    st.markdown(common.chip(rendered.category_label), unsafe_allow_html=True)
-    st.subheader(rendered.headline)
-    st.caption(rendered.impact_text)
+    presentation = presentation_for(rendered, persona)
+    st.markdown(common.chip(
+        presentation.chip, tooltip=voice.chip_tooltip(presentation.chip)),
+        unsafe_allow_html=True)
+    st.subheader(presentation.headline)
+    st.caption(presentation.detail)
     common.render_answer(
         rendered.candidate.artifact,
         key=f"digest_dialog_{rendered.result_hash}",
         allow_expand=False,
+        persona=persona,
     )
     with st.expander("Why this surfaced", expanded=True):
         _render_why(rendered)
-    st.caption(
-        f"Evidence stamp · fact hash: `{rendered.fact_hash}` · presentation hash: "
-        f"`{rendered.presentation_hash}`"
-    )
+    with st.expander("Evidence"):
+        display_hash = _voice_presentation_hash(rendered, persona)
+        st.caption(
+            f"Evidence stamp · fact hash: `{rendered.fact_hash}` · displayed-copy hash: "
+            f"`{display_hash}`"
+        )
 
 
-def _render_item(rendered, index: int) -> None:
+def _render_item(rendered, index: int, persona="Executive") -> None:
     candidate = rendered.candidate
+    presentation = presentation_for(rendered, persona)
+    display_hash = _voice_presentation_hash(rendered, persona)
     expand = False
     with st.container(border=True):
         st.markdown(common.chip(candidate.artifact.tier)
-                    + f"&nbsp; {common.chip(rendered.category_label)}",
+                    + f"&nbsp; {common.chip(presentation.chip, tooltip=voice.chip_tooltip(presentation.chip))}",
                     unsafe_allow_html=True)
-        st.subheader(rendered.headline)
-        st.caption(rendered.impact_text)
+        st.subheader(presentation.headline)
+        st.caption(presentation.detail)
         sparkline = _sparkline_chart(rendered)
         if sparkline is not None:
             st.altair_chart(sparkline, width="stretch")
@@ -225,8 +309,7 @@ def _render_item(rendered, index: int) -> None:
             st.caption(f"language model (validated){latency}")
         elif narration.get("fallback_kind"):
             if narration.get("fallback_kind") == "policy":
-                st.caption("Governed event wording retained by causal-safety policy; no model "
-                           "call was made.")
+                st.caption("Event wording was kept unchanged to avoid implying causation.")
             else:
                 st.caption("Templated phrasing retained because the optional rewrite was not "
                            "validated.")
@@ -236,36 +319,34 @@ def _render_item(rendered, index: int) -> None:
                        on_click=_queue_breakdown, args=(rendered,),
                        width="stretch")
         action2.download_button(
-            "Download artifact", data=rendered.to_json(), mime="application/json",
-            file_name=f"digest_item_{rendered.presentation_hash}.json",
+            "Download details", data=_item_download_json(rendered, persona),
+            mime="application/json",
+            file_name=f"digest_item_{display_hash}.json",
             key=f"digest_download_{index}_{rendered.result_hash}",
         )
         expand = action3.button(
             "Expand", key=f"digest_expand_{index}_{rendered.result_hash}",
             width="stretch", help="Open the complete governed artifact and full-size chart.")
-        st.caption(
-            f"Evidence stamp · fact hash: `{rendered.fact_hash}` · presentation hash: "
-            f"`{rendered.presentation_hash}` · answer hash: "
-            f"`{candidate.artifact.result_hash}`"
-        )
-
         with st.expander("Why this surfaced"):
             _render_why(rendered)
+        with st.expander("Evidence"):
+            st.caption(
+                f"Fact hash: `{rendered.fact_hash}` · displayed-copy hash: "
+                f"`{display_hash}` · answer hash: "
+                f"`{candidate.artifact.result_hash}`"
+            )
     if expand:
-        show_digest_dialog(rendered)
+        show_digest_dialog(rendered, persona)
 
 
 def render(persona: str | None = None, scope: Mapping | None = None,
            store: DigestHistoryStore | None = None) -> None:
     st.title("Daily digest")
     st.caption(
-        "The three highest-ranked, scope-diverse governed stories in the current monthly "
-        "data. Priority score v2 uses a fixed latest-month versus prior-six-month method: "
-        "45% standardized movement, 20% relative movement, and 35% business scale; "
-        "low-base guards suppress percentage inflation."
+        "The three developments most worth your attention in the current monthly data."
     )
     persona, scope = _resolved_context(persona, scope)
-    st.markdown(f"**View:** {persona} · **Scope:** {sl.scope_string(scope)}")
+    st.markdown(f"**View:** {persona} · **Scope:** {voice.scope_text(scope, persona)}")
 
     insight_store = saved_insights.session_store(st.session_state)
     watches, skipped_watch_classes = _descriptive_watch_inputs(insight_store.all())
@@ -273,20 +354,28 @@ def render(persona: str | None = None, scope: Mapping | None = None,
         st.caption(f"{skipped_watch_classes} watched diagnostic/retrieval item(s) are excluded "
                    "from movement ranking; they remain available in Monitoring.")
     try:
-        with st.spinner("Scanning governed series…"):
+        with st.spinner("Reviewing monthly signals…"):
             artifact = digest_service.build_digest(
                 persona=persona, scope=scope, watches=watches,
                 store=store or _session_history_store(),
             )
     except Exception:
         logging.getLogger(__name__).exception("digest computation failed")
-        st.error("The digest could not be computed, so no unverified ranking is shown.")
+        st.error("The digest could not be computed, so no ranking is shown.")
         return
 
-    st.caption(f"Scanned {artifact.scanned_series} series across "
-               f"{artifact.metric_families} metric families · data "
-               f"`{artifact.data_version}` · governance "
-               f"`{artifact.governance_fingerprint}` · digest `{artifact.result_hash}`")
+    st.caption(f"Reviewed {artifact.scanned_series} monthly series across "
+               f"{artifact.metric_families} metric families.")
+    with st.expander("How ranking works"):
+        st.caption(
+            "The ranking compares the latest month with the prior six-month norm, then "
+            "balances standardized movement, relative movement, and business scale. "
+            "Low-base safeguards prevent small counts from being overstated."
+        )
+        st.caption(f"Formula: {services.PRIORITY_SCORE_FORMULA}")
+    with st.expander("Digest evidence"):
+        st.caption(f"Data `{artifact.data_version}` · governance "
+                   f"`{artifact.governance_fingerprint}` · digest `{artifact.result_hash}`")
 
     session_key = st.session_state.get("api_key")
     deployment_key = os.environ.get("ANTHROPIC_API_KEY") \
@@ -307,17 +396,18 @@ def render(persona: str | None = None, scope: Mapping | None = None,
         st.caption(f"Requested model is not allowed; using `{model}`.")
 
     if not artifact.items:
-        st.info("No governed signal has enough monthly history to rank yet.")
+        st.info("No signal has enough monthly history to rank yet.")
         return
     rendered_items = tuple(
-        _narrated(item, api_key, model) if use_model and api_key else item
+        _narrated(item, api_key, model, persona) if use_model and api_key else item
         for item in artifact.items)
     presented = replace(artifact, items=rendered_items)
+    digest_download, digest_display_hash = _digest_download(presented, persona)
     st.download_button(
-        "Download complete digest", data=presented.to_json(),
+        "Download complete digest", data=digest_download,
         mime="application/json",
-        file_name=f"digest_{presented.presentation_hash}.json",
-        key=f"digest_complete_{presented.presentation_hash}",
+        file_name=f"digest_{digest_display_hash}.json",
+        key=f"digest_complete_{digest_display_hash}",
     )
     for index, item in enumerate(rendered_items, start=1):
-        _render_item(item, index)
+        _render_item(item, index, persona)

@@ -5,7 +5,7 @@ import logging
 
 import streamlit as st
 
-from harness import pipeline, triage
+from harness import pipeline, triage, voice
 from harness import semantic_layer as sl
 from harness.engines.causal_advisor import DESIGN_METRICS
 from views import common
@@ -27,13 +27,11 @@ def render() -> None:
     st.session_state["_studio_event_last"] = eid
     with st.expander("Event registry"):
         for ev in sl.EVENTS.values():
-            scope = ", ".join(
-                f"{key}={', '.join(map(str, value)) if isinstance(value, (list, tuple)) else value}"
-                for key, value in ev["scope"].items()
-            )
+            scope = voice.scope_text(ev["scope"], default_scope={})
+            metrics = ", ".join(voice.metric_name(item) for item in ev["metrics"])
             st.markdown(f"- **{ev['name']}** — from {ev['start']}, scope "
                         f"{scope}, "
-                        f"metrics: {', '.join(ev['metrics'])}. {ev['notes']}")
+                        f"metrics: {metrics}. {voice.humanize_sentence(ev['notes'])}")
 
     autorun = st.session_state.pop("studio_autorun", False)
     metric = st.session_state.pop("studio_metric", None)

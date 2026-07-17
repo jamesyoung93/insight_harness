@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-07-17 — Persona-aware presentation voice
+
+- Added one pure presentation voice layer for Sales Rep, District Manager,
+  Brand Marketing, Market Access, and Executive wording. The adapters
+  humanize scopes, metrics, variants, territory names, table columns,
+  movements, definition differences, cohort findings, refusals, and zero
+  states without mutating analytical artifacts.
+- Reframed Home, Digest, Monitoring, cohort, tile, and Ask surfaces around
+  persona-relevant decisions. Raw registry syntax and snake-case identifiers
+  stay in machine contracts; user copy uses natural scope and display names.
+- Expressed differences between share definitions in percentage points,
+  promoted the cohort's leading activity gap above match methodology, and
+  moved ranking formulas and evidence hashes behind explicit detail controls.
+- Added five-persona rendering fixtures, copy lints, artifact/hash invariance
+  tests, and a rendered Home/Digest/Monitoring persona walk. The optional
+  language-model narrator remains a validated rewrite of the human template;
+  all functionality continues to work without an API key.
+
 ## 2026-07-15 — Round 2: ranking integrity and decision depth
 
 - Applied one explicit, padded visible-data y-domain to compact tile sparklines

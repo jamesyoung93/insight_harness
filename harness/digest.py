@@ -16,7 +16,7 @@ from typing import Iterable, Mapping, Sequence
 
 import pandas as pd
 
-from . import pipeline, semantic_layer as sl, services, tiles, triage
+from . import pipeline, semantic_layer as sl, services, tiles, triage, voice
 from .digest_store import (DigestHistoryStore, InMemoryDigestHistoryStore,
                            history_fingerprint)
 from .provenance import AnswerArtifact, TIER_ABSTAINED
@@ -734,7 +734,8 @@ def _candidate_score(candidate: SignalCandidate, novelty: float) -> float:
 
 
 def rank_candidates(candidates: Sequence[SignalCandidate], recent_keys: Iterable[str] = (),
-                    limit: int = 3) -> list[tuple[SignalCandidate, float, float]]:
+                    limit: int = 3, *, persona: str | None = None
+                    ) -> list[tuple[SignalCandidate, float, float]]:
     """Rank scope tier first, then score, family diversity, and scope diversity.
 
     The first pass admits at most one item per exact scope so a national digest
@@ -749,19 +750,44 @@ def rank_candidates(candidates: Sequence[SignalCandidate], recent_keys: Iterable
          _candidate_score(candidate, novelty_factor(candidate, recent)))
         for candidate in candidates
     ]
-    scored.sort(key=lambda row: (-row[0].scope_rank, -row[2], row[0].semantic_key))
+    def ordering_key(row):
+        candidate = row[0]
+        relevance = voice.persona_relevance(
+            persona, candidate.kind, candidate.metric) if persona else 0
+        return (-candidate.scope_rank, -relevance, -row[2], candidate.semantic_key)
+
+    scored.sort(key=ordering_key)
     selected: list[tuple[SignalCandidate, float, float]] = []
     families: set[str] = set()
     scopes: set[tuple] = set()
+
+    # A material definition question inside the persona's highest scope tier
+    # must survive the family/scope diversity pass.  It still keeps its normal
+    # numeric score and its final position follows the same ordering key.
+    if persona and limit > 0 and scored:
+        highest_scope_rank = max(row[0].scope_rank for row in scored)
+        protected = next(
+            (row for row in scored
+             if row[0].kind == "divergence"
+             and row[0].scope_rank == highest_scope_rank),
+            None,
+        )
+        if protected is not None:
+            selected.append(protected)
+            families.add(protected[0].family)
+            scopes.add(protected[0].filters)
+
     for row in scored:
+        if len(selected) >= max(0, limit):
+            break
+        if row in selected:
+            continue
         scope_key = row[0].filters
         if row[0].family in families or scope_key in scopes:
             continue
         selected.append(row)
         families.add(row[0].family)
         scopes.add(scope_key)
-        if len(selected) >= max(0, limit):
-            break
     if len(selected) < max(0, limit):
         selected_keys = {row[0].semantic_key for row in selected}
         for row in scored:
@@ -772,12 +798,9 @@ def rank_candidates(candidates: Sequence[SignalCandidate], recent_keys: Iterable
             families.add(row[0].family)
             if len(selected) >= max(0, limit):
                 break
+    order = {row[0].semantic_key: index for index, row in enumerate(scored)}
+    selected.sort(key=lambda row: order[row[0].semantic_key])
     return selected
-
-
-def _scope_label(filters: Mapping) -> str:
-    label = sl.scope_string(dict(filters))
-    return "All scopes" if label == "all scopes" else label
 
 
 def _window_control(value) -> str | None:
@@ -808,6 +831,11 @@ def _basis_code(value) -> str | None:
         return tiles.BASIS_CONTROLS[text]
     aliases = {label.lower(): code for label, code in tiles.BASIS_CONTROLS.items()}
     return aliases.get(text.lower(), text)
+
+
+def _scope_label(filters: Mapping) -> str:
+    label = sl.scope_string(dict(filters))
+    return "All scopes" if label == "all scopes" else label
 
 
 def _headline(candidate: SignalCandidate) -> tuple[str, str]:
@@ -931,7 +959,8 @@ def build_digest(*, persona: str, scope: Mapping | None = None,
         recent_keys: tuple[str, ...] = tuple(existing.get("recent_item_keys", []))
         ranked_lookup = {candidate.semantic_key: (candidate, novelty, score)
                          for candidate, novelty, score in
-                         rank_candidates(scan.candidates, recent_keys, limit=max(limit, len(chosen)))}
+                         rank_candidates(scan.candidates, recent_keys,
+                                         limit=max(limit, len(chosen)), persona=persona)}
         selected = [ranked_lookup.get(candidate.semantic_key,
                                       (candidate, novelty_factor(candidate, recent_keys),
                                        _candidate_score(candidate, novelty_factor(candidate, recent_keys))))
@@ -944,7 +973,8 @@ def build_digest(*, persona: str, scope: Mapping | None = None,
             exclude_key=digest_key, limit=5)
         recent_keys = tuple(key for entry in recent for key in entry.get("item_keys", []))
         history_hash = history_fingerprint(recent)
-        selected = rank_candidates(scan.candidates, recent_keys, limit=limit)
+        selected = rank_candidates(
+            scan.candidates, recent_keys, limit=limit, persona=persona)
 
     items = tuple(_make_item(candidate, novelty, score)
                   for candidate, novelty, score in selected[:max(0, limit)])

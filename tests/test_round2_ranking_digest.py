@@ -1,7 +1,7 @@
 """Round-2 contracts for commercially credible ranking and digest cards."""
 from __future__ import annotations
 
-from harness import digest, services
+from harness import digest, profiles, services
 from views import digest as digest_view
 
 
@@ -73,3 +73,28 @@ def test_low_base_digest_headline_uses_count_range_not_percentage_or_sigma():
     assert "%" not in rendered.template_headline
     assert "σ" not in rendered.template_headline
     assert "percentage suppressed" in rendered.impact_text
+
+
+def test_persona_ordering_keeps_an_in_scope_material_definition_question():
+    persona = profiles.PERSONAS_BY_ID["sales_rep"]
+    scan = digest.scan_candidates(
+        persona=persona.label, scope=dict(persona.default_scope), watches=[])
+    highest_scope = max(candidate.scope_rank for candidate in scan.candidates)
+    protected = [candidate for candidate in scan.candidates
+                 if candidate.kind == "divergence"
+                 and candidate.scope_rank == highest_scope]
+    assert protected, "fixture needs an in-scope material definition question"
+
+    ranked = digest.rank_candidates(
+        scan.candidates, limit=3, persona=persona.label)
+    assert any(candidate.kind == "divergence"
+               and candidate.scope_rank == highest_scope
+               for candidate, _novelty, _score in ranked)
+    for candidate, novelty, score in ranked:
+        assert score == digest._candidate_score(candidate, novelty)
+
+    single = digest.rank_candidates(
+        scan.candidates, limit=1, persona=persona.label)
+    assert len(single) == 1
+    assert single[0][0].kind == "divergence"
+    assert single[0][0].scope_rank == highest_scope

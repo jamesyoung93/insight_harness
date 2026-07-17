@@ -13,7 +13,7 @@ from datetime import datetime
 
 import streamlit as st
 
-from harness import pipeline, runtime_policy, triage
+from harness import pipeline, runtime_policy, triage, voice
 from harness import semantic_layer as sl
 from views import common
 
@@ -92,8 +92,38 @@ def _history_rail() -> None:
         meta = f"{e['ts']}{' · override' if e['override'] else ''}"
         st.markdown(f"{common.chip(e['tier'])}<span style='font-size:0.75rem;"
                     f"color:#6B7280'>{meta}</span>", unsafe_allow_html=True)
-        headline = e["headline"].removeprefix("Declined: ")
+        artifact = e["artifact"]
+        persona = common.active_persona()
+        if e["tier"] == "Abstained":
+            headline = voice.refusal_presentation(
+                artifact, persona=persona).lead
+        elif artifact.engine == "cohort":
+            headline = voice.cohort_presentation(
+                artifact, persona=persona).headline
+        elif artifact.resolution is not None:
+            intent = artifact.extras.get("intent")
+            headline = voice.tile_presentation(
+                artifact,
+                persona=persona,
+                scope=getattr(intent, "filters", {}) if intent is not None else {},
+            ).headline
+        else:
+            headline = voice.humanize_sentence(
+                e["headline"].removeprefix("Declined: "), persona)
         st.caption(headline if len(headline) <= 80 else headline[:80] + "…")
+
+
+def _variant_label(variant: str, metric: str | None) -> str:
+    if variant == "governed default":
+        return "Use the standard definition"
+    if metric in sl.METRICS and variant in sl.METRICS[metric]["variants"]:
+        return voice.variant_name(metric, variant)
+    owner = next(
+        (metric_id for metric_id, definition in sl.METRICS.items()
+         if variant in definition["variants"]),
+        None,
+    )
+    return voice.variant_name(owner, variant) if owner else voice.column_name(variant)
 
 
 def render_workspace() -> None:
@@ -128,11 +158,15 @@ def render_workspace() -> None:
             oc1, oc2 = st.columns(2)
             src = oc1.selectbox("Source", ["governed default"] + list(sl.SOURCES),
                                 key="ask_src", on_change=common.clear_replay,
-                                format_func=lambda s: s if s == "governed default"
+                                format_func=lambda s: "Use the standard source"
+                                if s == "governed default"
                                 else sl.SOURCES[s]["name"])
             variants = sorted({v for metric in sl.METRICS.values() for v in metric["variants"]})
-            var = oc2.selectbox("Metric variant", ["governed default"] + variants,
-                                key="ask_var", on_change=common.clear_replay)
+            parsed_metric = triage.parse(q).metric if q else None
+            var = oc2.selectbox(
+                "Metric definition", ["governed default"] + variants,
+                key="ask_var", on_change=common.clear_replay,
+                format_func=lambda value: _variant_label(value, parsed_metric))
 
         basis = None
         if q and triage.parse(q).question_class == triage.DIAGNOSTIC:
