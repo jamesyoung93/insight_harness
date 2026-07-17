@@ -92,14 +92,14 @@ activity fields for governed retrieval and cohort selection.
 
 The three source products have distinct, registered contracts:
 
-- `source_a` — **Direct/DDD + specialty pharmacy feed**, at one
+- `source_a`: **Direct/DDD + specialty pharmacy feed**, at one
   `account_id` × `month` row, covering prescriptions and field activity with no
   reporting lag.
-- `source_b` — **Projected retail panel**, aggregated by month and the five
+- `source_b`: **Projected retail panel**, aggregated by month and the five
   registered dimensions, with a one-month lag, registered regional projection
   factors, and an early-history restatement. It does not claim HCP or
   field-activity grain.
-- `referral` — **Referral relationship feed**, at receiving-HCP × month grain
+- `referral`: **Referral relationship feed**, at receiving-HCP × month grain
   for a deterministic 80% of eligible HCPs. It is observed-only: a covered zero
   is zero, while an uncovered HCP remains unknown rather than being imputed or
   projected.
@@ -288,3 +288,7 @@ data/
   accounts.csv                  derived HCP universe
 tests/                          unit, contract, golden, and AppTest coverage
 ```
+
+## License
+
+Insight Harness is available under the [MIT License](LICENSE). The bundled dataset is deterministic synthetic demo data and contains no patient, prescriber, or other real-world records.
