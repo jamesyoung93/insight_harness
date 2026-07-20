@@ -6,7 +6,7 @@ from dataclasses import asdict, replace
 
 import streamlit as st
 
-from harness import baskets, drill, tile_runtime, tiles, triage
+from harness import baskets, drill, tile_runtime, tiles, triage, voice
 from views import common
 
 
@@ -46,6 +46,7 @@ def _effective_spec(spec: tiles.SavedQuestionSpec, window: str, basis: str,
 
 
 def _render_geo_drill(tile_id: str, scope: dict, metric: str) -> dict:
+    persona = common.active_persona()
     state_key = _dialog_scope_key(tile_id)
     if state_key not in st.session_state:
         st.session_state[state_key] = dict(scope)
@@ -54,7 +55,8 @@ def _render_geo_drill(tile_id: str, scope: dict, metric: str) -> dict:
     st.markdown("**Geographic drill**")
     crumbs = drill.breadcrumbs(current)
     crumb_columns = st.columns(max(1, len(crumbs)))
-    for index, ((label, crumb_scope), column) in enumerate(zip(crumbs, crumb_columns)):
+    for index, ((_label, crumb_scope), column) in enumerate(zip(crumbs, crumb_columns)):
+        label = voice.scope_text(crumb_scope, persona=persona)
         column.button(
             label,
             key=f"tile_dialog_{tile_id}_crumb_{index}",
@@ -69,11 +71,12 @@ def _render_geo_drill(tile_id: str, scope: dict, metric: str) -> dict:
         option_by_value = {option.value: option for option in options}
         dimension = options[0].dimension
         picked = st.selectbox(
-            f"Drill to {dimension}",
+            f"Drill to {voice.column_name(dimension)}",
             ("", *option_by_value),
             key=f"tile_dialog_{tile_id}_drill_{dimension}",
             format_func=lambda value: (
-                f"Choose {dimension}…" if not value else option_by_value[value].label),
+                f"Choose {voice.column_name(dimension).lower()}…" if not value
+                else voice.scope_text({dimension: value}, persona=persona)),
         )
         if picked:
             selected = drill.select_child(current, dimension, picked)
@@ -96,9 +99,10 @@ def _render_geo_drill(tile_id: str, scope: dict, metric: str) -> dict:
         rows = drill.hcp_rows(current, account_metric, top_n=25, min_volume=float(floor))
         st.caption(
             f"Top {len(rows)} synthetic HCP records by trailing-twelve-month "
-            f"{account_metric.upper()} · minimum volume {floor:g}."
+            f"{voice.metric_name(account_metric)} · minimum volume {floor:g}."
         )
-        st.dataframe(rows, hide_index=True, width="stretch")
+        st.dataframe(
+            voice.humanize_table(rows), hide_index=True, width="stretch")
     return current
 
 

@@ -7,6 +7,7 @@ refusal text, the data generator) are deliberately out of scope.
 """
 import ast
 from pathlib import Path
+import re
 
 import pytest
 
@@ -23,6 +24,17 @@ BANNED = [
     "benchmark",
     "production version",
 ]
+
+DYNAMIC_PRESENTERS = (
+    REPO / "harness" / "digest.py",
+    REPO / "views" / "home.py",
+    REPO / "views" / "digest.py",
+    REPO / "views" / "common.py",
+    REPO / "views" / "monitoring.py",
+    REPO / "views" / "ask.py",
+    REPO / "views" / "tile_detail.py",
+    REPO / "views" / "causal_studio.py",
+)
 
 
 def ui_files():
@@ -58,3 +70,31 @@ def test_refusal_copy_is_product_voiced():
     text = (REPO / "harness" / "triage.py").read_text(encoding="utf-8")
     for term in ("Alpha", "Beta", "scope expansion", "later iteration"):
         assert term not in text, f"triage.py contains roadmap language: {term!r}"
+
+
+@pytest.mark.parametrize("path", DYNAMIC_PRESENTERS, ids=lambda p: p.name)
+def test_dynamic_presenters_delegate_human_copy_to_voice(path):
+    """Business sentences are presentation adapters, not view-local f-strings."""
+
+    source = path.read_text(encoding="utf-8")
+    assert re.search(r"\bvoice\.", source), f"{path.name} does not delegate to voice.py"
+
+
+@pytest.mark.parametrize(
+    "path",
+    tuple(REPO / "views" / name for name in (
+        "home.py", "digest.py", "common.py", "monitoring.py",
+        "tile_detail.py", "causal_studio.py",
+    )),
+    ids=lambda p: p.name,
+)
+def test_views_do_not_render_machine_scope_strings(path):
+    """Canonical dim=value scope strings stay in artifacts, never in presentation."""
+
+    source = path.read_text(encoding="utf-8")
+    assert "sl.scope_string(" not in source
+
+
+def test_tile_action_trigger_is_metric_agnostic():
+    source = (REPO / "views" / "home.py").read_text(encoding="utf-8")
+    assert "Actions for {definition.label}" not in source

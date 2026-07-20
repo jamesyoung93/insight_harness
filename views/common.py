@@ -12,7 +12,7 @@ import pandas as pd
 import streamlit as st
 
 from harness import semantic_layer as sl
-from harness import runtime_policy, saved_insights, services, tiles
+from harness import runtime_policy, saved_insights, services, tiles, voice
 from harness.provenance import TIER_ABSTAINED
 
 TIER_COLORS = {"Verified": "#0E7C7B", "Directional": "#765100", "Hypothesis": "#70408F",
@@ -24,6 +24,16 @@ C_PRIMARY, C_REFERENCE = "#2a78d6", "#6B7280"
 C_LABEL = "#52514e"
 HOME_PAGE = "Home"
 _BASIS_CONTROL = {code: label for label, code in tiles.BASIS_CONTROLS.items()}
+
+
+def active_persona() -> str:
+    """Return the active presentation persona without coupling voice to Streamlit."""
+
+    return str(
+        st.session_state.get("home_persona")
+        or st.session_state.get("_home_persona_last")
+        or "executive"
+    )
 
 
 def format_metric_value(metric: str, variant: str | None, value: float | None, *,
@@ -158,8 +168,10 @@ def _save_watch(art) -> saved_insights.SaveResult:
         viz_kind = "table"
     else:
         viz_kind = "line" if intent.trend or art.chart_df is not None else "sparkline"
-    label = (f"{sl.METRICS[resolution.metric]['label']} · "
-             f"{sl.scope_string(intent.filters)}")
+    label = (
+        f"{voice.metric_name(resolution.metric)} · "
+        f"{voice.scope_text(intent.filters, persona=active_persona())}"
+    )
     insight = saved_insights.create_saved_insight(
         resolution.metric,
         intent.filters,
@@ -179,9 +191,11 @@ def _save_watch(art) -> saved_insights.SaveResult:
 # --------------------------------------------------------------------------- #
 # Chips and the stamp
 # --------------------------------------------------------------------------- #
-def chip(tier: str) -> str:
+def chip(tier: str, *, tooltip: str | None = None) -> str:
     label = html.escape(str(tier))
-    return f'<span class="tier-chip" style="background:{TIER_COLORS.get(tier, "#333")}">{label}</span>'
+    title = f' title="{html.escape(tooltip, quote=True)}"' if tooltip else ""
+    return (f'<span class="tier-chip"{title} '
+            f'style="background:{TIER_COLORS.get(tier, "#333")}">{label}</span>')
 
 
 def _artifact_window_label(art) -> str:
@@ -233,7 +247,7 @@ def _artifact_window_label(art) -> str:
     return "latest available"
 
 
-def hero_figure_content(art) -> tuple[str, str, str]:
+def hero_figure_content(art, persona: str | None = None) -> tuple[str, str, str]:
     """Build the value, quiet metadata, and body for an answer hero.
 
     This pure adapter is deliberately separate from ``render_hero_figure`` so
@@ -241,43 +255,47 @@ def hero_figure_content(art) -> tuple[str, str, str]:
     without creating a second computation path.
     """
 
+    persona = persona or "executive"
     intent = art.extras.get("intent")
     resolution = art.resolution
+    effective_scope = art.extras.get("effective_scope")
+    scope_filters = (
+        effective_scope if effective_scope is not None
+        else (getattr(intent, "filters", {}) if intent else {})
+    )
     if resolution is None:
         metric = f"{art.question_class} request"
-        scope = "governed scope check"
+        scope = "Scope check"
+        presentation = None
     else:
-        metric_spec = sl.METRICS[resolution.metric]
-        metric = metric_spec["variants"].get(resolution.variant, {}).get(
-            "label", metric_spec["label"])
-        effective_scope = art.extras.get("effective_scope")
-        scope = sl.scope_string(
-            effective_scope if effective_scope is not None
-            else (getattr(intent, "filters", {}) if intent else {})
-        )
+        metric = voice.variant_name(resolution.metric, resolution.variant)
+        scope = voice.scope_text(scope_filters, persona=persona)
+        presentation = voice.tile_presentation(
+            art, persona=persona, scope=scope_filters)
     label = " · ".join((metric, scope, _artifact_window_label(art)))
 
     if art.tier == TIER_ABSTAINED:
-        value = "No governed result"
+        value = "No reliable answer"
         body = ""
     elif art.engine == "causal_advisor":
         effect = art.extras.get("estimate", {}).get("did_pct", art.value)
         value = "—" if effect is None else f"{float(effect) * 100:+.1f}%"
-        body = art.headline
+        body = presentation.headline
     elif art.engine == "retrieval":
         value = f"{len(art.table):,} records" if art.table is not None else "Result set"
-        body = art.headline
+        body = presentation.headline
     elif art.engine == "cohort":
-        matched = int(art.extras.get("matched_count", 0))
-        value = f"{matched:,} matched pairs"
-        label = f"Top NRx-share HCP cohort · {scope} · governed R3M activity profile"
-        body = art.headline
+        presentation = voice.cohort_presentation(art, persona=persona)
+        value = presentation.hero
+        label = presentation.label
+        body = presentation.headline
     elif art.engine == "decomposition" and resolution is not None:
         value = format_native_delta(resolution.metric, resolution.variant, art.value)
-        body = art.headline
+        body = presentation.headline
     else:
         value = format_artifact_value(art, art.value)
-        body = art.headline
+        body = (presentation.headline if presentation is not None
+                else voice.humanize_sentence(art.headline, persona))
     return value, label, body
 
 
@@ -457,12 +475,14 @@ def _decomposition_body(art, key: str) -> None:
     if tables:  # empty when every dimension in scope is pinned to one value
         lead = art.extras["lead_dim"]
         dims = sorted(tables, key=lambda d: d != lead)  # lead dimension first
-        tabs = st.tabs([f"by {d}" for d in dims])
+        tabs = st.tabs([f"by {voice.column_name(d).lower()}" for d in dims])
         for tab, dim in zip(tabs, dims):
             with tab:
                 st.altair_chart(waterfall(tables[dim], m0, m1), width="stretch")
                 with st.expander("Contribution detail"):
-                    st.dataframe(tables[dim], width="stretch", hide_index=True)
+                    st.dataframe(
+                        voice.humanize_table(tables[dim]),
+                        width="stretch", hide_index=True)
     for ev in art.extras.get("overlapping_events", []):
         c1, c2 = st.columns([3, 2])
         c1.info(f"A registered event overlaps this window: **{ev['name']}**. "
@@ -483,14 +503,10 @@ def _signoff(art) -> None:
     art.extras["analyst_reviewed"] = ts
 
 
-def _causal_brief(art, key: str) -> None:
+def _causal_brief(art, key: str, persona: str | None = None) -> None:
     est, ev, sens = art.extras["estimate"], art.extras["event"], art.extras["sensitivity"]
     def render_scope(values: dict) -> str:
-        parts = []
-        for dimension, value in values.items():
-            rendered = ", ".join(map(str, value)) if isinstance(value, (list, tuple)) else str(value)
-            parts.append(f"{dimension}={rendered}")
-        return "; ".join(parts) or "all registered observations"
+        return voice.scope_text(values, persona=persona or active_persona())
 
     scope = render_scope(art.extras.get("analysis_scope") or ev["scope"])
     controls = render_scope(art.extras.get("control_scope")
@@ -507,7 +523,7 @@ def _causal_brief(art, key: str) -> None:
     checks = pd.DataFrame(art.extras["checks"])
     checks["status"] = checks["status"].map(
         {"pass": "✅ pass", "flag": "⚠️ flag", "manual": "👤 needs review"})
-    st.dataframe(checks, width="stretch", hide_index=True)
+    st.dataframe(voice.humanize_table(checks), width="stretch", hide_index=True)
 
     c1, c2 = st.columns(2)
     c1.metric("Estimated effect (control-adjusted)", f"{est['did_pct']*100:+.1f}%")
@@ -547,13 +563,23 @@ def _causal_brief(art, key: str) -> None:
                     "administrator token on the Semantic Layer page to review this result.")
 
 
-def _cohort_body(art, key: str) -> None:
+def _cohort_body(art, key: str, persona: str | None = None) -> None:
     """Render mixed-unit cohort gaps as independent-scale grouped small multiples."""
 
+    presentation = voice.cohort_presentation(
+        art, persona=persona or active_persona())
+    st.markdown(
+        '<span class="question-chip" style="border:1px solid #D1D5DB;'
+        'border-radius:12px;padding:2px 10px;color:#52525B;font-size:.76rem;'
+        f'font-weight:600;">{html.escape(presentation.method_chip)}</span>',
+        unsafe_allow_html=True,
+    )
     chart = art.chart_df
     if chart is not None and not chart.empty and {
             "label", "cohort", "value"}.issubset(chart.columns):
         plot = chart.copy()
+        if "metric" in plot:
+            plot["label"] = plot["metric"].map(voice.column_name)
         plot["cohort"] = plot["cohort"].map({
             "top_hcps": "Top HCPs", "matched_peers": "Matched peers",
         }).fillna(plot["cohort"])
@@ -586,27 +612,24 @@ def _cohort_body(art, key: str) -> None:
         )
 
     if art.table is not None:
-        display = art.table.copy()
-        for column in ("top_hcps", "matched_peers", "absolute_gap"):
-            if column in display:
-                display[column] = [
-                    f"{float(value):.1%}" if row_format == "percent"
-                    else f"{float(value):,.1f}"
-                    for value, row_format in zip(display[column], display["value_format"])
-                ]
-        if "relative_gap" in display:
-            display["relative_gap"] = display["relative_gap"].map(
-                lambda value: "—" if pd.isna(value) else f"{float(value):+.1%}")
-        st.dataframe(display, width="stretch", hide_index=True)
+        display = voice.cohort_display_table(art.table, persona)
+        st.dataframe(
+            display, width="stretch", hide_index=True)
 
     selection = art.extras.get("selection")
     matches = art.extras.get("peer_matches")
     if isinstance(selection, pd.DataFrame):
-        with st.expander("Selected top HCPs and governed floors"):
-            st.dataframe(selection, width="stretch", hide_index=True)
+        with st.expander("Who was compared"):
+            st.dataframe(
+                voice.humanize_table(selection), width="stretch", hide_index=True)
     if isinstance(matches, pd.DataFrame):
-        with st.expander("Deterministic peer matches"):
-            st.dataframe(matches, width="stretch", hide_index=True)
+        with st.expander("How peers were matched"):
+            st.dataframe(
+                voice.humanize_table(matches), width="stretch", hide_index=True)
+            recipe = art.extras.get("recipe")
+            if recipe:
+                st.caption("Complete matching recipe")
+                st.json(recipe)
     st.button(
         "Design a causal follow-up",
         key=f"{key}_causal_followup",
@@ -621,19 +644,19 @@ def _cohort_body(art, key: str) -> None:
 # --------------------------------------------------------------------------- #
 # Cross-cutting blocks: divergence, caveats, provenance, actions
 # --------------------------------------------------------------------------- #
-def _divergence_block(art) -> None:
+def _divergence_block(art, persona: str | None = None) -> None:
     material = [d for d in art.divergence if d["material"]]
     if not material:
         return
-    with st.expander(f"⑂ Same question, different answer — {len(material)} material fork(s)"):
+    persona = persona or active_persona()
+    with st.expander("Why two answers exist"):
         st.caption("The answer above uses the governed default. These registered alternates "
                    "move it materially; escalate unresolved forks to metric governance.")
-        for d in art.divergence:
-            flag = "**material**" if d["material"] else "immaterial"
-            note = f" · {d['note']}" if d["note"] else ""
-            value = format_artifact_value(art, d["value"])
-            st.markdown(f"- {d['label']} → {value} "
-                        f"({d['rel_diff']*100:+.1f}%, {flag}){note}")
+        for fork in material:
+            presentation = voice.definition_fork_presentation(
+                art, fork, persona=persona)
+            note = f" · {fork['note']}" if fork.get("note") else ""
+            st.markdown(f"- {presentation.detail}{note}")
 
 
 def _caveats_block(art) -> None:
@@ -659,7 +682,8 @@ def _provenance_block(art) -> None:
         st.code(art.code, language="python")
 
 
-def _actions_row(art, key: str, *, allow_expand: bool = True) -> None:
+def _actions_row(art, key: str, *, allow_expand: bool = True,
+                 persona: str | None = None) -> None:
     slug = art.question_class.lower().replace(" ", "_")
     # Keep the receipt controls usable in the narrow main pane created by an
     # open sidebar.  A trailing spacer made every real control collapse and
@@ -719,14 +743,22 @@ def _actions_row(art, key: str, *, allow_expand: bool = True) -> None:
     if allow_expand and expandable:
         if c5.button("Expand", key=f"{key}_expand",
                      help="Open the complete artifact in a large dialog."):
-            show_answer_dialog(art, key)
+            show_answer_dialog(art, key, persona=persona)
 
 
-def _refusal(art, key: str) -> None:
-    reason = html.escape(art.headline.removeprefix("Declined: "))
-    question = html.escape(art.question)
-    st.markdown(f'<div class="refusal"><b>Scoped refusal</b> — “{question}”<br>{reason}</div>',
-                unsafe_allow_html=True)
+def _refusal(art, key: str, persona: str | None = None) -> None:
+    presentation = voice.refusal_presentation(
+        art, persona=persona or active_persona())
+    lead = html.escape(presentation.lead)
+    reason = html.escape(presentation.detail)
+    question = html.escape(str(art.question))
+    st.markdown(
+        f'<div class="refusal"><b>{lead}</b><br>'
+        f'<span style="font-size:.88rem;color:#52525B">{reason}</span>'
+        '<div style="margin-top:.45rem;font-size:.75rem;color:#71717A">'
+        f'Scoped refusal · “{question}”</div></div>',
+        unsafe_allow_html=True,
+    )
     reframes = art.extras.get("reframes", [])
     if reframes:
         st.caption("Reliable ways to ask this:")
@@ -739,39 +771,45 @@ def _refusal(art, key: str) -> None:
 # --------------------------------------------------------------------------- #
 # The single answer renderer
 # --------------------------------------------------------------------------- #
-def render_answer(art, key: str = "ans", *, allow_expand: bool = True) -> None:
+def render_answer(art, key: str = "ans", *, allow_expand: bool = True,
+                  persona: str | None = None) -> None:
+    persona = persona or active_persona()
     key = f"{key}_{art.result_hash}"
     with st.container(border=True):
-        value, label, body = hero_figure_content(art)
+        value, label, body = hero_figure_content(art, persona)
         render_hero_figure(value, label, body, art.tier, art.question_class)
 
         if art.tier == TIER_ABSTAINED:
-            _refusal(art, key)
-            _actions_row(art, key, allow_expand=allow_expand)
+            _refusal(art, key, persona)
+            _actions_row(
+                art, key, allow_expand=allow_expand, persona=persona)
             return
 
         if art.engine == "causal_advisor":
-            _causal_brief(art, key)
+            _causal_brief(art, key, persona)
         elif art.engine == "decomposition":
             _decomposition_body(art, key)
         elif art.engine == "cohort":
-            _cohort_body(art, key)
+            _cohort_body(art, key, persona)
         else:
             if art.chart_df is not None:
                 line_chart(art.chart_df)
             if art.table is not None and art.engine != "descriptive":
-                st.dataframe(art.table, width="stretch",
+                st.dataframe(voice.humanize_table(art.table, persona), width="stretch",
                              height=min(320, 45 + 35 * len(art.table)))
 
-        _divergence_block(art)
+        _divergence_block(art, persona)
         _caveats_block(art)
         _provenance_block(art)
         render_stamp(art)
-        _actions_row(art, key, allow_expand=allow_expand)
+        _actions_row(art, key, allow_expand=allow_expand, persona=persona)
 
 
 @st.dialog("Explore governed answer", width="large")
-def show_answer_dialog(art, key: str = "answer_dialog") -> None:
+def show_answer_dialog(art, key: str = "answer_dialog",
+                       persona: str | None = None) -> None:
     """Render the canonical artifact at full width without a recursive expand action."""
 
-    render_answer(art, key=f"{key}_dialog", allow_expand=False)
+    render_answer(
+        art, key=f"{key}_dialog", allow_expand=False,
+        persona=persona or active_persona())

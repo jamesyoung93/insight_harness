@@ -11,7 +11,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from harness import baskets, digest as digest_service
+from harness import baskets, digest as digest_service, voice
 from harness import profiles, saved_insights, services, tile_runtime, tiles, triage
 from harness import semantic_layer as sl
 from harness.digest_store import InMemoryDigestHistoryStore
@@ -57,7 +57,10 @@ def _cached_home_digest(data_version: str, governance_fingerprint: str,
 
 
 def _format_value(art) -> str:
-    return common.format_artifact_value(art, art.value, places=0)
+    if art.resolution is None:
+        return common.format_artifact_value(art, art.value)
+    return voice.format_value(
+        art.resolution.metric, art.value, art.resolution.variant)
 
 
 def _format_delta(art) -> str | None:
@@ -116,13 +119,14 @@ def _sparkline(chart_df: pd.DataFrame | None) -> None:
     st.altair_chart(chart, width="stretch")
 
 
-def _compact_stamp(art) -> None:
+def _compact_stamp(art, persona: profiles.PersonaDefinition | str | None = None) -> None:
     resolution = art.resolution
     source = sl.SOURCES[resolution.source]["name"] if resolution else "No source"
     st.markdown(common.chip(art.tier), unsafe_allow_html=True)
-    st.caption(f"{source} · result `{art.result_hash}` · data `{art.data_version}`")
-    if resolution:
-        st.caption(resolution.reason)
+    with st.expander("Evidence"):
+        st.caption(f"{source} · result `{art.result_hash}` · data `{art.data_version}`")
+        if resolution:
+            st.caption(voice.humanize_sentence(resolution.reason, persona))
 
 
 def _tile_badges(art, *, material_forks: int = 0, override_notes: int = 0) -> None:
@@ -131,7 +135,8 @@ def _tile_badges(art, *, material_forks: int = 0, override_notes: int = 0) -> No
         badges.append(
             '<span class="question-chip" style="border:1px solid #B07C0E;'
             'border-radius:12px;padding:2px 9px;font-size:.78rem;color:#765100">'
-            f'⚠ {material_forks} definition fork{"s" if material_forks != 1 else ""}</span>')
+            '<span title="Material definition fork: registered definitions produce '
+            'different answers">⚠ Two answers exist</span></span>')
     if override_notes:
         badges.append(
             '<span class="question-chip" style="border:1px solid #6B7280;'
@@ -140,12 +145,12 @@ def _tile_badges(art, *, material_forks: int = 0, override_notes: int = 0) -> No
     st.markdown(" ".join(badges), unsafe_allow_html=True)
 
 
-def _tile_label(definition: tiles.TileDefinition, scope) -> str:
+def _tile_label(definition: tiles.TileDefinition, scope,
+                persona: profiles.PersonaDefinition | str | None = None) -> str:
     external = dict(tiles.require_valid_scope(scope))
     filters = tiles.effective_filters(definition, scope=scope)
     if external and all(filters.get(key) == value for key, value in external.items()):
-        value = next(iter(external.values()))
-        return f"{definition.label} · {value}"
+        return f"{definition.label} · {voice.scope_text(external, persona)}"
     return definition.label
 
 
@@ -162,45 +167,74 @@ def _queue_tile_question(question: str, source: str | None, variant: str | None,
     common.queue_question(question)
 
 
-def _watch_tile(spec: tiles.SavedQuestionSpec, scope, definition: tiles.TileDefinition) -> None:
+def _watch_tile(spec: tiles.SavedQuestionSpec, scope, definition: tiles.TileDefinition,
+                persona: profiles.PersonaDefinition | str | None = None) -> None:
     insight = saved_insights.save_spec(
-        spec, label=_tile_label(definition, scope), catalog_tile_id=definition.id,
+        spec, label=_tile_label(definition, scope, persona), catalog_tile_id=definition.id,
         watched=True, scope=scope)
     result = saved_insights.session_store(st.session_state).add(insight)
     st.toast("Watching — see Monitoring." if result.added else "Already on the watchlist.")
 
 
-def _format_fork_value(art, value: float) -> str:
-    if art.resolution and sl.metric_kind(art.resolution.metric) == "ratio":
-        return f"{float(value):.1%}"
-    if art.resolution and art.resolution.variant in ("dollars", "net", "gross"):
-        return f"${float(value):,.1f}"
-    return f"{float(value):,.1f}"
-
-
 def _render_tile_body(definition: tiles.TileDefinition, spec: tiles.SavedQuestionSpec,
-                      scope, art) -> None:
-    label = _tile_label(definition, scope)
+                      scope, art, persona: profiles.PersonaDefinition) -> None:
+    count = len(art.table) if art.table is not None else None
+    cohort = None
+    if spec.question_class == triage.COHORT:
+        cohort = voice.cohort_presentation(art, persona)
+        presentation = cohort
+    else:
+        presentation = voice.tile_presentation(
+            art,
+            persona=persona,
+            metric=definition.metric,
+            scope=tiles.effective_spec_filters(spec, scope),
+            headline=art.headline,
+            value=art.value,
+            is_zero=count == 0 if count is not None else False,
+            label=_tile_label(definition, scope, persona),
+            template=spec.retrieval_template,
+        )
+    label = presentation.label or _tile_label(definition, scope, persona)
     basket_resolution = art.extras.get("basket_resolution", {})
     basket_id = basket_resolution.get("basket_id") if isinstance(
         basket_resolution, dict) else None
     if basket_id in baskets.BASKETS:
         label += f" · {baskets.BASKETS[basket_id].label}"
     if spec.viz_kind == "count":
-        count = len(art.table) if art.table is not None else 0
+        count = count or 0
         st.metric(label, f"{count:,}")
-        st.caption(art.headline)
+        st.caption(presentation.headline)
         if art.table is not None and not art.table.empty:
-            st.dataframe(art.table.head(5), width="stretch", hide_index=True,
+            st.dataframe(voice.humanize_table(art.table.head(5), persona),
+                         width="stretch", hide_index=True,
                          height=min(220, 38 + 35 * min(len(art.table), 5)))
     elif spec.viz_kind == "table":
         st.markdown(f"**{label}**")
-        st.caption(art.headline)
+        if cohort is not None:
+            st.caption(cohort.hero)
+            st.caption(cohort.headline)
+            st.markdown(
+                '<span class="question-chip" style="border:1px solid #d9e0e8;'
+                'border-radius:12px;padding:2px 9px;font-size:.74rem;color:#52514e">'
+                f'{html.escape(cohort.method_chip)}</span>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.caption(presentation.headline)
         if art.table is not None:
-            st.dataframe(art.table.head(8), width="stretch", hide_index=True,
+            display = (
+                voice.cohort_display_table(
+                    art.table.head(8), persona, compact=True)
+                if cohort is not None
+                else voice.humanize_table(art.table.head(8), persona)
+            )
+            st.dataframe(display,
+                         width="stretch", hide_index=True,
                          height=min(300, 38 + 35 * min(len(art.table), 8)))
     else:
         st.metric(label, _format_value(art), _format_delta(art))
+        st.caption(presentation.headline)
         if art.resolution and art.resolution.metric == "new_writers":
             current_month = art.extras.get("comparison", {}).get("current_month")
             period = f" · latest {current_month}" if current_month else ""
@@ -210,7 +244,7 @@ def _render_tile_body(definition: tiles.TileDefinition, spec: tiles.SavedQuestio
 
 
 def _tile_actions(definition: tiles.TileDefinition, spec: tiles.SavedQuestionSpec,
-                  scope, art, *, material_forks=(), disclosures=(),
+                  scope, art, persona: profiles.PersonaDefinition, *, material_forks=(), disclosures=(),
                   definition_notes=()) -> None:
     filters = tiles.effective_spec_filters(spec, scope)
     window_n = tiles.WINDOW_CONTROLS[spec.window] \
@@ -220,23 +254,22 @@ def _tile_actions(definition: tiles.TileDefinition, spec: tiles.SavedQuestionSpe
     breakdown = services.breakdown_question(spec.metric, filters, window_n, basis_code)
     question = tiles.canonical_question_for_spec(spec, scope)
     expand = False
-    with st.popover(f"Actions for {definition.label}", width="stretch"):
+    with st.popover("Actions", width="stretch"):
         resolution = art.resolution
         source = sl.SOURCES[resolution.source]["name"] if resolution else "No source"
         st.caption(f"{art.tier} · {source} · data `{art.data_version}` · "
                    f"result `{art.result_hash}`")
         if resolution:
-            st.caption(resolution.reason)
+            st.caption(voice.humanize_sentence(resolution.reason, persona))
         for note in definition_notes:
             st.caption(f"Definition: {note}")
         for disclosure in disclosures:
             st.caption(f"Override note: {disclosure}")
         if material_forks:
-            st.markdown("**Material definition forks**")
+            st.markdown("**Why two answers exist**")
             for fork in material_forks:
-                note = f" · {fork['note']}" if fork.get("note") else ""
-                st.markdown(f"- **{fork['label']}**: {_format_fork_value(art, fork['value'])} "
-                            f"({fork['rel_diff'] * 100:+.1f}%){note}")
+                comparison = voice.definition_fork_presentation(art, fork, persona)
+                st.markdown(f"- {comparison.detail}")
         if resolution or disclosures or material_forks:
             st.divider()
         expand = st.button(
@@ -244,7 +277,8 @@ def _tile_actions(definition: tiles.TileDefinition, spec: tiles.SavedQuestionSpe
             width="stretch", help="Open a large governed chart with local drill controls.")
         if spec.question_class != triage.COHORT:
             st.button(f"Watch {definition.label}", key=f"tile_{definition.id}_watch",
-                      on_click=_watch_tile, args=(spec, scope, definition), width="stretch")
+                      on_click=_watch_tile, args=(spec, scope, definition, persona),
+                      width="stretch")
         st.download_button(
             f"Download {definition.label} JSON", data=art.to_json(),
             file_name=f"tile_{definition.id}_{art.result_hash}.json",
@@ -281,7 +315,8 @@ def _adaptive_basket(materialized: tiles.MaterializedSpec, scope,
 
 
 def _render_tile(definition: tiles.TileDefinition, window: str, basis: str,
-                 scope, source: str | None, variant: str | None) -> None:
+                 scope, source: str | None, variant: str | None,
+                 persona: profiles.PersonaDefinition) -> None:
     try:
         materialized = tiles.materialize_spec(
             definition, window=window, basis=basis, source=source, variant=variant)
@@ -318,15 +353,17 @@ def _render_tile(definition: tiles.TileDefinition, window: str, basis: str,
         definition_notes = (basket_resolution.disclosure,)
 
     if art.tier == TIER_ABSTAINED:
-        st.error(art.headline)
-        _compact_stamp(art)
+        refusal = voice.refusal_presentation(art, persona)
+        st.error(refusal.lead)
+        st.caption(refusal.detail)
+        _compact_stamp(art, persona)
         return
 
     disclosures = (*materialized.disclosures, *scope_disclosures)
     material = [fork for fork in art.divergence if fork.get("material")]
-    _render_tile_body(definition, materialized.spec, scope, art)
+    _render_tile_body(definition, materialized.spec, scope, art, persona)
     _tile_badges(art, material_forks=len(material), override_notes=len(disclosures))
-    _tile_actions(definition, materialized.spec, scope, art,
+    _tile_actions(definition, materialized.spec, scope, art, persona,
                   material_forks=material, disclosures=disclosures,
                   definition_notes=definition_notes)
 
@@ -422,7 +459,7 @@ def _persona_selector() -> profiles.PersonaDefinition:
         _apply_persona(persona)
         st.session_state[_PERSONA_APPLIED_KEY] = persona_id
     st.caption(f"Preset: {persona.default_window} · {persona.default_basis} · "
-               f"{tiles.scope_label(persona.default_scope)}")
+               f"{voice.scope_text(dict(persona.default_scope), persona)}")
     return persona
 
 
@@ -507,7 +544,7 @@ def _customize_tiles(persona: profiles.PersonaDefinition) -> profiles.LayoutReso
                        "you remove or reset them.")
             for tile_id in state.retired_tile_ids:
                 st.button(
-                    f"Remove retired tile: {tile_id}",
+                    f"Remove retired tile: {voice.column_name(tile_id)}",
                     key=f"home_{persona.id}_{tile_id}_retired_remove",
                     on_click=profiles.remove_tile,
                     args=(st.session_state, persona.id, tile_id))
@@ -534,7 +571,17 @@ def _customize_tiles(persona: profiles.PersonaDefinition) -> profiles.LayoutReso
     return state
 
 
-def _control_band(definitions: tuple[tiles.TileDefinition, ...]):
+def _scope_option_label(option: tiles.ScopeOption,
+                        persona: profiles.PersonaDefinition) -> str:
+    filters = dict(option.filters)
+    if not filters:
+        return voice.scope_text(filters, persona)
+    dimension = next(iter(filters))
+    return f"{voice.column_name(dimension)} · {voice.scope_text(filters, persona)}"
+
+
+def _control_band(definitions: tuple[tiles.TileDefinition, ...],
+                  persona: profiles.PersonaDefinition):
     _restore_controls()
     c1, c2, c3, c4 = st.columns([1.7, 1.7, 2.4, 1.25], gap="small")
     window = c1.radio("Window", tuple(tiles.WINDOW_CONTROLS), horizontal=True,
@@ -547,7 +594,7 @@ def _control_band(definitions: tuple[tiles.TileDefinition, ...]):
         st.session_state["home_scope"] = tiles.ALL_SCOPES
     scope_key = c3.selectbox(
         "Scope", tuple(option_by_key), key="home_scope",
-        format_func=lambda key: option_by_key[key].label,
+        format_func=lambda key: _scope_option_label(option_by_key[key], persona),
         help="Scope by geography, specialty, or payer channel using registered values.")
     metric_ids = {definition.metric for definition in definitions}
     sources = tuple(source for source in sl.SOURCES
@@ -561,12 +608,16 @@ def _control_band(definitions: tuple[tiles.TileDefinition, ...]):
                         width="stretch"):
             source_pick = st.selectbox(
                 "Prescription source", ("governed default", *sources), key="home_source",
-                format_func=lambda value: value if value == "governed default"
+                format_func=lambda value: "Recommended source" if value == "governed default"
                 else sl.SOURCES[value]["name"])
             variant_pick = st.selectbox(
-                "Sales type", ("governed default", *variants), key="home_variant")
-            st.caption("Overrides apply only where registered; fixed definitions are retained "
-                       "and disclosed.")
+                "Sales type", ("governed default", *variants), key="home_variant",
+                format_func=lambda value: "Recommended definition"
+                if value == "governed default" else next(
+                    (voice.variant_name(metric, value) for metric in sorted(metric_ids)
+                     if value in sl.METRICS[metric]["variants"]), value))
+            st.caption("Changes apply where available; fixed definitions stay in place and "
+                       "are explained.")
     _remember_controls()
     return (window, basis, option_by_key[scope_key].filters,
             None if source_pick == "governed default" else source_pick,
@@ -578,13 +629,13 @@ def render_kpi_band(persona: profiles.PersonaDefinition) -> None:
     heading.subheader("Business pulse")
     with customize:
         layout = _customize_tiles(persona)
-    st.caption("Monthly governed metrics. Compatible tiles use the selected controls; a tile "
-               "with a conflicting fixed scope keeps its governed definition and says so.")
+    st.caption("Monthly performance at a glance. Tiles follow the controls above unless a "
+               "fixed definition applies; any difference is explained in Actions.")
     definitions = tuple(tiles.TILES_BY_ID[tile_id] for tile_id in layout.tile_ids)
     if not definitions:
         st.info("No tiles are selected for this persona. Add one under Customize tiles.")
         return
-    window, basis, scope, source, variant = _control_band(definitions)
+    window, basis, scope, source, variant = _control_band(definitions, persona)
     for start in range(0, len(definitions), 3):
         row = definitions[start:start + 3]
         # Always reserve three equal slots so a partial final row never stretches
@@ -593,7 +644,7 @@ def render_kpi_band(persona: profiles.PersonaDefinition) -> None:
         for column, definition in zip(columns, row):
             with column:
                 with st.container(border=True):
-                    _render_tile(definition, window, basis, scope, source, variant)
+                    _render_tile(definition, window, basis, scope, source, variant, persona)
 
 
 def _render_digest_strip(persona: profiles.PersonaDefinition) -> None:
@@ -614,7 +665,7 @@ def _render_digest_strip(persona: profiles.PersonaDefinition) -> None:
         )
     except Exception:
         logging.getLogger(__name__).exception("home digest strip failed")
-        st.caption("The governed digest strip is temporarily unavailable; open Digest to retry.")
+        st.caption("The attention summary is temporarily unavailable; open Digest to retry.")
         return
 
     heading, open_digest = st.columns([5, 1.2], gap="small")
@@ -623,61 +674,56 @@ def _render_digest_strip(persona: profiles.PersonaDefinition) -> None:
         "Open Digest", key="home_open_digest", on_click=common.goto,
         args=("Digest",), width="stretch")
     st.caption(
-        f"Top {len(artifact.items)} scope-diverse governed stories · scanned "
-        f"{artifact.scanned_series} series · digest `{artifact.result_hash}`"
+        f"Top {len(artifact.items)} scope-diverse stories from "
+        f"{artifact.scanned_series} monthly series."
     )
     if not artifact.items:
-        st.info("No governed signal has enough history to rank yet.")
+        st.info("No signal has enough history to rank yet.")
         return
 
     expanded = None
     columns = st.columns(3, gap="medium")
     for index, (column, item) in enumerate(zip(columns, artifact.items), start=1):
         with column:
-            # A true strip: action shares the metadata row, the headline is a
-            # one-line preview, and the full artifact remains one click away.
-            metadata, action = st.columns([3.5, 1], gap="small")
-            with metadata:
-                st.markdown(
-                    common.chip(item.candidate.artifact.tier)
-                    + f"&nbsp; {common.chip(item.category_label)}",
-                    unsafe_allow_html=True,
-                )
-            with action:
-                if st.button(
-                        "Open", key=f"home_digest_expand_{index}_{item.result_hash}",
-                        width="stretch", help="Open the complete governed story."):
-                    expanded = item
-            headline = item.headline
-            if len(headline) > 86:
-                boundary = headline.rfind(" ", 0, 83)
-                headline = headline[:boundary if boundary > 58 else 83] + "…"
+            presentation = digest_view.presentation_for(item, persona)
+            # The full headline remains in the DOM and the browser clamps it to
+            # two lines; opening the story always shows the complete wording.
+            st.markdown(
+                common.chip(item.candidate.artifact.tier)
+                + f"&nbsp; {common.chip(presentation.chip, tooltip=voice.chip_tooltip(presentation.chip))}",
+                unsafe_allow_html=True,
+            )
+            headline = presentation.headline
             st.markdown(
                 '<div style="font-size:.86rem;font-weight:650;line-height:1.3;'
-                'height:1.2rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
+                'height:2.25rem;overflow:hidden;display:-webkit-box;'
+                '-webkit-box-orient:vertical;-webkit-line-clamp:2;'
                 'margin:0 0 .05rem 0">'
                 f'{html.escape(headline)}</div>',
                 unsafe_allow_html=True,
             )
+            if st.button(
+                    "Open story", key=f"home_digest_expand_{index}_{item.result_hash}",
+                    width="stretch", help="Open the complete story and its evidence."):
+                expanded = item
             sparkline = digest_view._sparkline_chart(item)
             if sparkline is not None:
                 st.altair_chart(sparkline.properties(height=34), width="stretch")
     if expanded is not None:
-        digest_view.show_digest_dialog(expanded)
+        digest_view.show_digest_dialog(expanded, persona)
 
 
 def render() -> None:
     intro, persona_control = st.columns([3.5, 1.5], gap="medium")
     with intro:
         st.title("Home")
-        st.caption("Start with the governed state of the business, then interrogate any number. "
-                   "Every surface resolves through the same deterministic answer pipeline.")
+        st.caption("Start with the state of the business, then explore any number in context.")
     with persona_control:
         persona = _persona_selector()
     _render_digest_strip(persona)
     render_kpi_band(persona)
     st.divider()
     st.subheader("Explore")
-    st.caption("Ask about governed metrics in plain language. Unreliable requests receive a "
-               "scoped refusal with a concrete reframe.")
+    st.caption("Ask about any available metric in plain language. If a question cannot be "
+               "answered reliably, the app explains why and suggests a useful reframe.")
     ask.render_workspace()

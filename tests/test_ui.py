@@ -98,7 +98,7 @@ def test_home_starts_with_live_persona_kpis_and_hierarchy_scope_control():
     assert at.selectbox(key="home_scope").value == tiles.scope_key(persona.default_scope)
 
     scope_labels = set(at.selectbox(key="home_scope").options)
-    for prefix in ("Region ·", "District ·", "Territory ·", "Specialty ·", "Payer Channel ·"):
+    for prefix in ("Region ·", "District ·", "Territory ·", "Specialty ·", "Payer channel ·"):
         assert any(str(option).startswith(prefix) for option in scope_labels)
     assert next(item for item in at.text_input if item.label == "Question").value == ""
 
@@ -468,9 +468,9 @@ def test_digest_renders_diverse_ranked_items_and_complete_plus_item_downloads():
     assert len({item.value for item in at.subheader}) == 3
     labels = [item.label for item in at.get("download_button")]
     assert labels.count("Download complete digest") == 1
-    assert labels.count("Download artifact") == 3
+    assert labels.count("Download details") == 3
     assert sum(button.label == "Break this down" for button in at.button) == 3
-    assert "Scanned" in rendered_text(at) and "metric families" in rendered_text(at)
+    assert "Reviewed" in rendered_text(at) and "metric families" in rendered_text(at)
 
 
 def test_digest_drillthrough_preserves_the_candidate_resolution():

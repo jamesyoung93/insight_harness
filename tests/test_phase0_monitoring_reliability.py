@@ -60,7 +60,7 @@ def test_monitoring_uses_exact_1_6_default_and_visually_prioritizes_rows(monkeyp
     assert "Priority 82/100" in markup
     assert "Native movement +250" in markup
     breakdown = _button(at, "Break this down")
-    assert breakdown.help == "Open a governed breakdown of TRx for region=West."
+    assert breakdown.help == "Open a detailed breakdown of TRx for West."
 
     sensitivity.set_value(1.7).run()
     assert thresholds[-1] == 1.7
