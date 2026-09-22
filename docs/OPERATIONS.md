@@ -22,6 +22,10 @@ python -m pip check
 constraints intentionally and rerun the complete release checks when upgrading
 dependencies.
 
+`streamlit-sortables==0.3.1` is pinned in both runtime requirements and CI
+constraints. Release verification includes drag reorder and the Move up/down
+button fallback in the smoke checklist below.
+
 Start the app from the repository root:
 
 ```bash
