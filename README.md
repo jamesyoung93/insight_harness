@@ -1,9 +1,14 @@
 # Insight Harness
 
-Insight Harness is a Streamlit decision-intelligence workbench for a synthetic
-pharma commercial dataset. It starts with persona-specific KPI tiles, then lets
-the user interrogate the same governed metrics through natural language,
-monitoring, a top-three digest, and registered causal designs.
+[![Verify](https://github.com/jamesyoung93/insight_harness/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jamesyoung93/insight_harness/actions/workflows/ci.yml)
+
+Ask business questions in plain English. Insight Harness validates the request,
+calculates results in Python, and returns an auditable answer with source and
+calculation provenance.
+
+This Python/Streamlit workbench runs on bundled synthetic pharma commercial
+data, with no API key required. Explore persona-specific KPI tiles, natural-
+language questions, monitoring, a top-three digest, and registered causal designs.
 
 The trust boundary is simple: a language model may translate a question or
 rephrase a digest headline, but it never computes an answer. Registry-validated
@@ -16,6 +21,11 @@ and stable hash.
 > dataset is monthly, not weekly, and contains no patient, prescriber, or other
 > real-world data. Do not use this repository to make clinical or production
 > commercial decisions without replacing and validating the full data contract.
+
+![Insight Harness running with synthetic data and the built-in parser](docs/assets/workbench.png)
+
+*The running app with bundled synthetic data and the built-in parser. No model
+credential is needed for this view.*
 
 ## Quick start
 
@@ -39,6 +49,21 @@ python -m pytest -q
 
 The app is fully usable without an API key. In that mode, questions use the
 bounded rule parser and digest cards use deterministic templates.
+
+### Three examples to inspect
+
+| Question or scenario | Expected behavior | Evidence |
+|---|---|---|
+| “What is TRx in the West region?” | Calculate the latest month's total prescriptions for West from the registered source | Answer artifact with scope, source, data version, and result hash |
+| “Forecast TRx for next quarter” | Return a scoped refusal because no forecasting model is registered | Abstained artifact with suggested supported questions |
+| A model returns `"metric": ["trx"]` or `"filters": []` | Reject the malformed translation and use the built-in parser; preserve the question's scope or refusal | Artifact records the rejected translation's fallback reason; regression tests exercise the translator and pipeline |
+
+Try the first two questions in **Home → Explore**. The third is a deliberately
+injected model response, reproducible without an API key:
+
+```bash
+python -m pytest -q tests/test_llm_validation.py
+```
 
 ## What is implemented
 
@@ -140,7 +165,7 @@ the registry contains no governed forecasting model. Causal requests execute
 only when they match a registered event and preserve its treated population;
 otherwise the system returns a scoped reframe.
 
-The built-in parser recognizes the exact Round-2 demonstration question:
+The built-in parser also recognizes this cohort comparison:
 
 > Compare the activity mix of top 20 HCPs by NRx share with matched peers
 
@@ -227,6 +252,19 @@ changes. A true morning digest requires a real refreshed feed.
 
 ## Evaluation and CI
 
+### What is measured
+
+| Evaluation | What it establishes | Boundary |
+|---|---|---|
+| Deterministic golden set | Calculations, data contracts, scoped refusals, and repeatable artifact hashes against independently computed expectations | Runs through the built-in parser and deterministic engines; does not call a live model |
+| Model-output validation and fallback tests | Malformed responses are rejected and fallback preserves supported calculations and scoped refusals | Uses injected responses with the external SDK call mocked |
+| Live small-model tool calling | Not yet benchmarked | The optional translator currently calls Anthropic; this repository does not report vLLM/Ollama accuracy or an autonomous tool-calling benchmark |
+
+Passing software tests establishes behavior for the covered cases. Live-model
+translation accuracy, recovery success rates, and latency need a separate
+evaluation with a named model, fixed data snapshot, and independently checked
+held-out questions.
+
 The test suite includes deterministic engine tests, data-contract and golden-set
 checks, tile/spec/cache parity, saved-insight migrations, session isolation,
 digest ranking and narrator attacks, priority/low-base/clustering contracts,
@@ -238,16 +276,6 @@ GitHub Actions runs on pull requests and pushes to `main` with read-only
 repository permissions. It resolves the declared dependency ranges against the
 tested direct-version pins in `constraints.txt`, checks the dependency graph,
 regenerates the benchmark, compiles the app, and runs the full test suite.
-
-`streamlit-sortables==0.3.1` is pinned in both runtime requirements and CI
-constraints. Before publishing a Round-2 build, run the regeneration drift
-check, compile step, and complete test suite shown above; then smoke-test the
-exact cohort question, a basket override, referral completeness, tile and answer
-dialogs, geo drill to the synthetic-NPI table, drag reorder, and the button
-fallback in a clean local session. Deployment still follows the `main`-branch
-Streamlit procedure in [docs/OPERATIONS.md](docs/OPERATIONS.md), followed by the
-same hosted smoke checks; this README does not imply that a local commit has
-already reached the hosted app.
 
 For operational configuration, state-file behavior, deployment, and the release
 checklist, see [docs/OPERATIONS.md](docs/OPERATIONS.md).

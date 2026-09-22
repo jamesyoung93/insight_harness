@@ -136,18 +136,25 @@ def _validate(question: str, raw: str) -> tuple[triage.Intent, dict]:
     if not isinstance(d["reason"], str):
         raise TranslationError("reason must be a string", kind="rejected")
 
+    # Check JSON types before registry membership: arrays and objects are
+    # unhashable and must become a rejection, not escape as a TypeError.
+    for field in ("metric", "event_id", "basket_id", "template",
+                  "compare_basis", "dim_breakdown"):
+        if d[field] is not None and not isinstance(d[field], str):
+            raise TranslationError(f"{field} must be a string or null", kind="rejected")
+
     qc = d.get("question_class")
-    if qc not in VALID_CLASSES:
+    if not isinstance(qc, str) or qc not in VALID_CLASSES:
         raise TranslationError(f"invalid question_class: {qc!r}", kind="rejected")
 
     metric = d.get("metric")
     if metric is not None and metric not in sl.METRICS:
         raise TranslationError(f"unregistered metric: {metric!r}", kind="rejected")
 
-    fact = sl.load_fact("source_a")
-    filters = d.get("filters") or {}
+    filters = d["filters"]
     if not isinstance(filters, dict):
         raise TranslationError("filters must be an object", kind="rejected")
+    fact = sl.load_fact("source_a")
     for k, v in filters.items():
         vals = v if isinstance(v, list) else [v]
         try:
