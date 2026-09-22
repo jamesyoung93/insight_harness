@@ -7,8 +7,8 @@ calculates results in Python, and returns an auditable answer with source and
 calculation provenance.
 
 This Python/Streamlit workbench runs on bundled synthetic pharma commercial
-data, with no API key required. Explore persona-specific KPI tiles, natural-
-language questions, monitoring, a top-three digest, and registered causal designs.
+data, with no API key required. Explore persona-specific KPI tiles, questions in
+plain language, monitoring, a top-three digest, and registered causal designs.
 
 The trust boundary is simple: a language model may translate a question or
 rephrase a digest headline, but it never computes an answer. Registry-validated
